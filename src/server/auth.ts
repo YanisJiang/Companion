@@ -54,18 +54,28 @@ export function passwordMatches(input: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+function cookieSecure(): boolean {
+  // 仅在确有 HTTPS 时开启；纯 HTTP（当前阿里云 IP 访问）必须为 false，否则浏览器不存 Cookie
+  const raw = process.env.COOKIE_SECURE;
+  if (raw === undefined || raw === "") return false;
+  return raw === "1" || raw.toLowerCase() === "true" || raw === "yes";
+}
+
 export function setSessionCookie(c: Context, token: string) {
   setCookie(c, config.cookieName, token, {
     httpOnly: true,
     sameSite: "Lax",
     path: "/",
     maxAge: Math.floor(config.sessionTtlMs / 1000),
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecure(),
   });
 }
 
 export function clearSessionCookie(c: Context) {
-  deleteCookie(c, config.cookieName, { path: "/" });
+  deleteCookie(c, config.cookieName, {
+    path: "/",
+    secure: cookieSecure(),
+  });
 }
 
 export async function requireAuth(c: Context, next: Next) {

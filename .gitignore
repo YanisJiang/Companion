@@ -7,5 +7,6 @@ data/
 .DS_Store
 cookies.txt
 body-*.json
+deploy.tgz
 
 .vscode/
