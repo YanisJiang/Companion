@@ -2,6 +2,14 @@ import { chatCompletion, type ChatMessage } from "./deepseek.js";
 import { config } from "./config.js";
 import { insertMessage, recentMessages } from "./db.js";
 import {
+  applyReplySentToCompanionState,
+  ensureCompanionStateTicked,
+  formatStateBrief,
+  getTraits,
+  loadCompanionState,
+} from "./companion-runtime.js";
+import { decideReply } from "./decide.js";
+import {
   cancelPendingFollowup,
   scheduleFollowupAfterReply,
 } from "./followup.js";
@@ -123,9 +131,17 @@ async function generateReply(gen: number): Promise<void> {
 async function generateAndInsertReply(genAtStart: number): Promise<void> {
   await ensureTodayState();
   await ensureContinuityThreads();
+  ensureCompanionStateTicked();
+  const replyIntent = decideReply(loadCompanionState(), getTraits());
+  const brief = formatStateBrief(loadCompanionState());
+  const replyHint =
+    replyIntent === "reply_soft"
+      ? `\n本轮回复意图=短回（内在：${brief}）：更短、更收着；优先 1 条，不要拆多泡生活碎念。`
+      : `\n本轮回复意图=正常（内在：${brief}）：按人设自然回即可。`;
+
   const history = recentMessages(config.recentTurns * 2);
   const messages: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt() },
+    { role: "system", content: buildSystemPrompt() + replyHint },
     ...history.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -135,10 +151,14 @@ async function generateAndInsertReply(genAtStart: number): Promise<void> {
   const reply = await chatCompletion(messages);
   if (genAtStart !== replyGen) return;
 
-  const bubbles = splitBubbles(reply).slice(0, MAX_BUBBLES);
+  let bubbles = splitBubbles(reply).slice(0, MAX_BUBBLES);
+  if (replyIntent === "reply_soft") {
+    bubbles = bubbles.slice(0, 1);
+  }
   if (!bubbles.length) return;
 
   insertMessage("assistant", bubbles[0]);
+  applyReplySentToCompanionState();
 
   let chainDelay = 0;
   for (let i = 1; i < bubbles.length; i++) {

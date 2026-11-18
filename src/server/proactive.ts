@@ -18,8 +18,12 @@ import {
 import { ensureDaySchedule, tickClockEvents } from "./clock.js";
 import { ensureContinuityThreads } from "./continuity.js";
 import {
+  applyInitiativeSentToCompanionState,
+  ensureCompanionStateTicked,
+} from "./companion-runtime.js";
+import {
   canAttemptInitiative,
-  decideInitiativeTone,
+  decideInitiativeIntent,
   noteUnansweredInitiative,
 } from "./initiative-context.js";
 import { notifyProactivePush } from "./push.js";
@@ -63,29 +67,32 @@ async function tickDailyGreeting() {
   }
   if (hasUserMessageOnLocalDate(today)) return;
 
-  const tone = decideInitiativeTone();
-  if (tone === "silence") {
-    console.log("[proactive] skip: tone silence");
+  ensureCompanionStateTicked();
+  const intent = decideInitiativeIntent();
+  if (intent === "silence") {
+    console.log("[proactive] skip: intent silence");
     return;
   }
 
   try {
-    const text = (await generateInitiativeText(tone)).trim();
+    const text = (await generateInitiativeText(intent)).trim();
     if (!text) return;
     insertMessage("assistant", text, true);
     recordInitiative();
+    applyInitiativeSentToCompanionState();
     const streak = noteUnansweredInitiative(today);
     if (streak >= 2) clearIdleDue();
     else bumpIdleDueAfterUnanswered();
     setSetting("last_proactive_date", today);
     void notifyProactivePush(text);
-    console.log("[proactive] 已发送主动消息", { tone, streak });
+    console.log("[proactive] 已发送主动消息", { intent, streak });
   } catch (err) {
     console.error("[proactive] 失败", err);
   }
 }
 
 export async function tickProactive() {
+  ensureCompanionStateTicked();
   await ensureTodayState();
   await ensureDaySchedule();
   await ensureContinuityThreads();

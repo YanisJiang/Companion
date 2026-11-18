@@ -1,9 +1,33 @@
 import { getSetting, recentMessages, setSetting } from "./db.js";
 import {
+  ensureCompanionStateTicked,
+  getTraits,
+} from "./companion-runtime.js";
+import type { CompanionState } from "./companion-state.js";
+import {
   isHeavyMoodText,
   isInHeavyCooldown,
   textsHaveHeavyMood,
 } from "./crisis.js";
+import {
+  decideInitiative,
+  initiativeIntentToTone,
+  type InitiativeIntent,
+} from "./decide.js";
+
+function hasOpenContinuityThreads(): boolean {
+  const raw = getSetting("continuity_json") || "";
+  if (!raw.trim()) return false;
+  try {
+    const data = JSON.parse(raw) as { threads?: unknown };
+    return (
+      Array.isArray(data.threads) &&
+      data.threads.some((t) => typeof t === "string" && t.trim())
+    );
+  } catch {
+    return false;
+  }
+}
 
 export type InitiativeTone = "silence" | "presence" | "life";
 
@@ -17,6 +41,10 @@ const LEGACY_AWAITING_KEY = "awaiting_user_after_initiative";
 
 /** 软沉重：未到危机词，但也不该切日常碎碎念 */
 const SOFT_HEAVY_RE = /难受|崩溃|想哭|撑不住|好累|委屈|心堵|绝望|没钱了/;
+
+export function isSoftHeavyText(text: string): boolean {
+  return SOFT_HEAVY_RE.test(text.trim());
+}
 
 export function shanghaiYmdLocal(d = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -48,7 +76,6 @@ export function canAttemptWithStreak(
 export function getUnansweredInitiativeStreak(
   todayYmd: string = shanghaiYmdLocal(),
 ): number {
-  // 顺带清掉旧永久闸，避免脏配置干扰排查
   if (getSetting(LEGACY_AWAITING_KEY) === "1") {
     setSetting(LEGACY_AWAITING_KEY, "0");
   }
@@ -85,20 +112,52 @@ export function recentUserTexts(limit = 8): string[] {
 }
 
 /**
- * 主动前情境：是否发、发陪伴还是发生活。
- * heavy/crisis：禁止 life；默认 silence，偶发 presence。
+ * 用近聊文案叠到状态上（纯数据），供 decide 使用。
+ * 已到点考虑主动时，无沉重则抬一点社交欲。
+ */
+export function overlayStateForInitiative(
+  base: CompanionState,
+  userTexts: string[],
+): CompanionState {
+  let crisisResidue = base.crisisResidue;
+  let socialDrive = base.socialDrive;
+
+  if (isInHeavyCooldown() || textsHaveHeavyMood(userTexts)) {
+    crisisResidue = Math.max(crisisResidue, 0.85);
+  } else if (userTexts.some((t) => isSoftHeavyText(t) || isHeavyMoodText(t))) {
+    crisisResidue = Math.max(crisisResidue, 0.55);
+  } else {
+    // 外层已过 idle/额度等；抬社交欲让性格有机会选 life
+    socialDrive = Math.max(socialDrive, 0.55);
+    crisisResidue = Math.min(crisisResidue, 0.25);
+  }
+
+  return { ...base, crisisResidue, socialDrive };
+}
+
+export function decideInitiativeIntent(
+  userTexts: string[] = recentUserTexts(),
+  rand: () => number = Math.random,
+): InitiativeIntent {
+  const ticked = ensureCompanionStateTicked();
+  const state = overlayStateForInitiative(ticked, userTexts);
+  const hasOpenThread = hasOpenContinuityThreads();
+  return decideInitiative(state, getTraits(), {
+    rand,
+    hasOpenThread,
+    unansweredStreak: getUnansweredInitiativeStreak(),
+  });
+}
+
+/**
+ * 主动前情境 → 旧三态（兼容 followup/proactive 调用方）。
+ * 决策已改走状态驱动 decide。
  */
 export function decideInitiativeTone(
   userTexts: string[] = recentUserTexts(),
   rand: () => number = Math.random,
 ): InitiativeTone {
-  if (isInHeavyCooldown() || textsHaveHeavyMood(userTexts)) {
-    return rand() < 0.12 ? "presence" : "silence";
-  }
-  if (userTexts.some((t) => SOFT_HEAVY_RE.test(t) || isHeavyMoodText(t))) {
-    return rand() < 0.55 ? "presence" : "silence";
-  }
-  return "life";
+  return initiativeIntentToTone(decideInitiativeIntent(userTexts, rand));
 }
 
 export function canAttemptInitiative(): boolean {

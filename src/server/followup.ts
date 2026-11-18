@@ -6,10 +6,16 @@ import {
 } from "./db.js";
 import { isInHeavyCooldown } from "./crisis.js";
 import {
+  applyInitiativeSentToCompanionState,
+  ensureCompanionStateTicked,
+  formatStateBrief,
+  loadCompanionState,
+} from "./companion-runtime.js";
+import type { InitiativeIntent } from "./decide.js";
+import {
   canAttemptInitiative,
-  decideInitiativeTone,
+  decideInitiativeIntent,
   noteUnansweredInitiative,
-  type InitiativeTone,
 } from "./initiative-context.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { notifyProactivePush } from "./push.js";
@@ -132,6 +138,7 @@ export function bumpIdleDueAfterUnanswered(): void {
 function commitInitiativeMessage(text: string): void {
   insertMessage("assistant", text, true);
   recordInitiative();
+  applyInitiativeSentToCompanionState();
   const streak = noteUnansweredInitiative();
   if (streak >= 2) {
     // 连续未回已满：当天歇着，清掉到期点，避免分钟轮询空转
@@ -190,26 +197,33 @@ export function scheduleFollowupAfterReply(): void {
   }, delay);
 }
 
-export async function generateInitiativeText(tone: InitiativeTone): Promise<string> {
-  if (tone === "silence") return "";
-  await ensureTodayState();
-  if (tone === "presence") {
-    return chatCompletion([
-      { role: "system", content: buildSystemPrompt() },
-      {
-        role: "user",
-        content:
-          "（系统）用户刚经历过难受或沉重话题。请主动发一句极短的在场：只表示你还在、陪着，不要提问，不要建议清单，不要提咖啡/听歌/今日小事/发呆等日常碎碎念。只输出一句正文。",
-      },
-    ]);
+function initiativeUserPrompt(intent: InitiativeIntent): string {
+  const brief = formatStateBrief(loadCompanionState());
+  switch (intent) {
+    case "silence":
+      return "";
+    case "heavy_hold":
+      return `（系统）当前意图=沉重冷静陪伴；内在状态：${brief}。用户刚经历难受或沉重话题。请主动发一句极短的在场：只表示你还在、陪着，不要提问，不要建议清单，不要提咖啡/听歌/今日小事/发呆等日常碎碎念。只输出一句正文。`;
+    case "presence":
+      return `（系统）当前意图=在场一句；内在状态：${brief}。补发一句极短的在场（在呢/想你之类），不要提问，不要日常碎碎念清单。只输出一句正文。`;
+    case "check_in":
+      return `（系统）当前意图=轻接未完线；内在状态：${brief}。像微信里又冒出来：可轻轻续上「近期未完线」里的一件事，一句即可；不要采访清单、不要提问收尾。只输出一句正文。`;
+    case "life":
+      return `（系统）当前意图=生活碎念；内在状态：${brief}。补发一条很短的主动消息：像微信里过一会儿又冒出来的那句。可轻轻带「你今天的状态」里的小事，或当下碎碎念；不要空关心、不要提问收尾、不要列表。只输出一句正文。`;
   }
+}
+
+/** @param intent 状态驱动意图；silence 不调模型 */
+export async function generateInitiativeText(
+  intent: InitiativeIntent,
+): Promise<string> {
+  if (intent === "silence") return "";
+  await ensureTodayState();
+  const content = initiativeUserPrompt(intent);
+  if (!content) return "";
   return chatCompletion([
     { role: "system", content: buildSystemPrompt() },
-    {
-      role: "user",
-      content:
-        "（系统）补发一条很短的主动消息：像微信里过一会儿又冒出来的那句。可轻轻带「你今天的状态」里的小事，或当下碎碎念；不要空关心、不要提问收尾、不要列表。只输出一句正文。",
-    },
+    { role: "user", content },
   ]);
 }
 
@@ -226,15 +240,16 @@ async function runFollowup(gen: number): Promise<void> {
   }
   if (!canSendInitiative()) return;
 
-  const tone = decideInitiativeTone();
-  console.log("[followup] tone", tone);
-  if (tone === "silence") return;
+  ensureCompanionStateTicked();
+  const intent = decideInitiativeIntent();
+  console.log("[followup] intent", intent);
+  if (intent === "silence") return;
 
   try {
-    const cleaned = (await generateInitiativeText(tone)).trim();
+    const cleaned = (await generateInitiativeText(intent)).trim();
     if (!cleaned) return;
     commitInitiativeMessage(cleaned);
-    console.log("[followup] 已发送续话", { tone });
+    console.log("[followup] 已发送续话", { intent });
   } catch (err) {
     console.error("[followup] 失败", err);
   }
@@ -266,15 +281,16 @@ export async function tickIdlePing(): Promise<void> {
   }
   clearIdleDue();
 
-  const tone = decideInitiativeTone();
-  console.log("[idle] tone", tone);
-  if (tone === "silence") return;
+  ensureCompanionStateTicked();
+  const intent = decideInitiativeIntent();
+  console.log("[idle] intent", intent);
+  if (intent === "silence") return;
 
   try {
-    const text = (await generateInitiativeText(tone)).trim();
+    const text = (await generateInitiativeText(intent)).trim();
     if (!text) return;
     commitInitiativeMessage(text);
-    console.log("[idle] 已发送安静后主动消息", { tone });
+    console.log("[idle] 已发送安静后主动消息", { intent });
   } catch (err) {
     console.error("[idle] 失败", err);
   }

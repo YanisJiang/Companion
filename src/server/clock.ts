@@ -8,8 +8,14 @@ import {
   shanghaiYmd,
 } from "./followup.js";
 import {
+  applyInitiativeSentToCompanionState,
+  ensureCompanionStateTicked,
+  formatStateBrief,
+  loadCompanionState,
+} from "./companion-runtime.js";
+import {
   canAttemptInitiative,
-  decideInitiativeTone,
+  decideInitiativeIntent,
   noteUnansweredInitiative,
 } from "./initiative-context.js";
 import { DEFAULT_DOSSIER } from "./persona.js";
@@ -232,14 +238,16 @@ async function pingForEvent(label: string): Promise<boolean> {
   if (getSetting("proactive_enabled") !== "1") return false;
   if (!canAttemptInitiative()) return false;
   if (!canSendInitiative()) return false;
-  const tone = decideInitiativeTone();
-  if (tone === "silence") return false;
+  ensureCompanionStateTicked();
+  const intent = decideInitiativeIntent();
+  if (intent === "silence") return false;
   if (Math.random() > PING_PROB) return false;
 
+  const brief = formatStateBrief(loadCompanionState());
   const prompt =
-    tone === "presence"
-      ? `（系统）到点事件「${label}」刚发生。用户近期偏沉重。只发一句极短在场，提到你在做这件事的感觉即可，不要提问，不要日常碎碎念堆砌。只输出一句正文。`
-      : `（系统）你日程里的「${label}」到点了。像微信随口冒一句，带一点这件事，不要提问收尾，不要列表。只输出一句正文。`;
+    intent === "heavy_hold" || intent === "presence"
+      ? `（系统）当前意图=${intent}；内在状态：${brief}。到点事件「${label}」刚发生。用户近期偏沉重或你只想在场。只发一句极短在场，可轻带这件事，不要提问，不要日常碎碎念堆砌。只输出一句正文。`
+      : `（系统）当前意图=${intent}；内在状态：${brief}。你日程里的「${label}」到点了。像微信随口冒一句，带一点这件事，不要提问收尾，不要列表。只输出一句正文。`;
 
   try {
     // 动态 import，避免与 prompt→clock 循环依赖
@@ -253,11 +261,12 @@ async function pingForEvent(label: string): Promise<boolean> {
     if (!text) return false;
     insertMessage("assistant", text, true);
     recordInitiative();
+    applyInitiativeSentToCompanionState();
     const streak = noteUnansweredInitiative();
     if (streak >= 2) clearIdleDue();
     else bumpIdleDueAfterUnanswered();
     void notifyProactivePush(text);
-    console.log("[clock] pinged", { label, tone });
+    console.log("[clock] pinged", { label, intent });
     return true;
   } catch (err) {
     console.error("[clock] ping failed", err);
