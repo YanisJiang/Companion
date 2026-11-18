@@ -22,12 +22,9 @@ import {
   listMessages,
   setSetting,
 } from "./db.js";
-import { DEFAULT_DOSSIER, DEFAULT_PERSONA } from "./persona.js";
 import {
   ensureDaySchedule,
-  formatSchedule,
   isClockPingEnabled,
-  readStoredSchedule,
   setClockPingEnabled,
 } from "./clock.js";
 import {
@@ -45,32 +42,15 @@ import {
   resetInitiativeUsedToday,
   setIdleWindowMinutes,
   setInitiativeDailyCap,
-  shanghaiYmd,
 } from "./followup.js";
 import { startProactiveLoop } from "./proactive.js";
-import {
-  ensureContinuityThreads,
-  formatContinuity,
-  readStoredContinuity,
-} from "./continuity.js";
-import {
-  ensureTodayState,
-  formatTodayState,
-  readStoredTodayState,
-} from "./today.js";
+import { ensureContinuityThreads } from "./continuity.js";
+import { ensureTodayState } from "./today.js";
 import {
   isReplyGenerating,
   noteTyping,
   resetReplyScheduler,
 } from "./reply-scheduler.js";
-
-function currentPersona(): string {
-  return getSetting("persona") || config.persona || DEFAULT_PERSONA;
-}
-
-function currentDossier(): string {
-  return getSetting("character_dossier") || DEFAULT_DOSSIER;
-}
 
 const app = new Hono();
 
@@ -80,18 +60,14 @@ app.get("/api/me", async (c) => {
   const token = getCookie(c, config.cookieName);
   const ok = verifySessionToken(token);
   if (!ok) return c.json({ authenticated: false });
-  await ensureTodayState();
-  await ensureDaySchedule();
-  await ensureContinuityThreads();
-  const today = readStoredTodayState();
-  const continuity = readStoredContinuity();
-  const schedule = readStoredSchedule();
+  // 后台确保今日/日程/未完线有数据，但不返回给前端
+  void ensureTodayState();
+  void ensureDaySchedule();
+  void ensureContinuityThreads();
   return c.json({
     authenticated: true,
     companionName: getSetting("companion_name") || config.companionName,
     userNickname: getSetting("user_nickname") || config.userNickname,
-    persona: currentPersona(),
-    characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
     clockPingEnabled: isClockPingEnabled(),
     pushNotifyEnabled: isPushNotifyEnabled(),
@@ -100,9 +76,6 @@ app.get("/api/me", async (c) => {
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: getIdleWindowMinutes().min,
     idleMaxMinutes: getIdleWindowMinutes().max,
-    todayState: today ? formatTodayState(today) : "",
-    daySchedule: schedule ? formatSchedule(schedule, shanghaiYmd()) : "",
-    continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });
 
@@ -168,18 +141,10 @@ api.post("/messages/clear", (c) => {
   return c.json({ ok: true });
 });
 
-api.get("/settings", async (c) => {
-  await ensureTodayState();
-  await ensureDaySchedule();
-  await ensureContinuityThreads();
-  const today = readStoredTodayState();
-  const continuity = readStoredContinuity();
-  const schedule = readStoredSchedule();
+api.get("/settings", (c) => {
   return c.json({
     companionName: getSetting("companion_name") || config.companionName,
     userNickname: getSetting("user_nickname") || config.userNickname,
-    persona: currentPersona(),
-    characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
     clockPingEnabled: isClockPingEnabled(),
     pushNotifyEnabled: isPushNotifyEnabled(),
@@ -188,9 +153,6 @@ api.get("/settings", async (c) => {
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: getIdleWindowMinutes().min,
     idleMaxMinutes: getIdleWindowMinutes().max,
-    todayState: today ? formatTodayState(today) : "",
-    daySchedule: schedule ? formatSchedule(schedule, shanghaiYmd()) : "",
-    continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });
 
@@ -227,8 +189,6 @@ api.post("/settings", async (c) => {
   const body = (await c.req.json().catch(() => null)) as {
     companionName?: string;
     userNickname?: string;
-    persona?: string;
-    characterDossier?: string;
     proactiveEnabled?: boolean;
     clockPingEnabled?: boolean;
     pushNotifyEnabled?: boolean;
@@ -236,8 +196,6 @@ api.post("/settings", async (c) => {
     idleMinMinutes?: number;
     idleMaxMinutes?: number;
     resetInitiativeUsedToday?: boolean;
-    regenerateTodayState?: boolean;
-    refreshContinuityThreads?: boolean;
   } | null;
   if (!body) return c.json({ error: "无效请求" }, 400);
   if (typeof body.companionName === "string" && body.companionName.trim()) {
@@ -245,14 +203,6 @@ api.post("/settings", async (c) => {
   }
   if (typeof body.userNickname === "string" && body.userNickname.trim()) {
     setSetting("user_nickname", body.userNickname.trim());
-  }
-  if (typeof body.persona === "string") {
-    const text = body.persona.trim();
-    if (text) setSetting("persona", text);
-  }
-  if (typeof body.characterDossier === "string") {
-    const text = body.characterDossier.trim();
-    if (text) setSetting("character_dossier", text);
   }
   if (typeof body.proactiveEnabled === "boolean") {
     setSetting("proactive_enabled", body.proactiveEnabled ? "1" : "0");
@@ -283,21 +233,6 @@ api.post("/settings", async (c) => {
   if (body.resetInitiativeUsedToday === true) {
     resetInitiativeUsedToday();
   }
-  if (body.regenerateTodayState === true) {
-    await ensureTodayState(true);
-    await ensureDaySchedule(true);
-  } else {
-    await ensureTodayState();
-    await ensureDaySchedule();
-  }
-  if (body.refreshContinuityThreads === true) {
-    await ensureContinuityThreads(true);
-  } else {
-    await ensureContinuityThreads();
-  }
-  const today = readStoredTodayState();
-  const continuity = readStoredContinuity();
-  const schedule = readStoredSchedule();
   const idle = getIdleWindowMinutes();
   return c.json({
     ok: true,
@@ -308,9 +243,6 @@ api.post("/settings", async (c) => {
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: idle.min,
     idleMaxMinutes: idle.max,
-    todayState: today ? formatTodayState(today) : "",
-    daySchedule: schedule ? formatSchedule(schedule, shanghaiYmd()) : "",
-    continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });
 

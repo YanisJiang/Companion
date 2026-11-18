@@ -116,8 +116,8 @@ describe("splitBubbles", () => {
 });
 
 describe("persona less-split + delay ban", () => {
-  it("seed=9 且少拆、禁忙碌圆沉默", () => {
-    assert.equal(PERSONA_SEED_VERSION, "9");
+  it("配置人设含少拆、禁忙碌圆沉默", () => {
+    assert.equal(PERSONA_SEED_VERSION, "10");
     assert.match(DEFAULT_PERSONA, /最多 3 条/);
     assert.match(DEFAULT_PERSONA, /套袜子/);
   });

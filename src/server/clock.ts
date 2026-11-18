@@ -18,7 +18,7 @@ import {
   decideInitiativeIntent,
   noteUnansweredInitiative,
 } from "./initiative-context.js";
-import { DEFAULT_DOSSIER } from "./persona.js";
+import { getDossierText } from "./character-config.js";
 import { notifyProactivePush } from "./push.js";
 import { readStoredTodayState } from "./today.js";
 
@@ -180,7 +180,7 @@ function fallbackSchedule(ymd: string): ScheduleEvent[] {
 }
 
 async function generateSchedule(ymd: string): Promise<ScheduleEvent[]> {
-  const dossier = (getSetting("character_dossier") || DEFAULT_DOSSIER).trim();
+  const dossier = getDossierText().trim();
   const today = readStoredTodayState(ymd);
   const moodHint = today
     ? `今日心情：${today.mood}；小事：${today.beats.join("、")}`

@@ -1,4 +1,8 @@
-import { getSetting, setSetting } from "./db.js";
+import {
+  getCharacterDynamics,
+  getCharacterConfig,
+  getConfiguredTraits,
+} from "./character-config.js";
 import {
   createInitialState,
   onInitiativeSentState,
@@ -10,7 +14,8 @@ import {
   tickState,
   type CompanionState,
 } from "./companion-state.js";
-import { DEFAULT_TRAITS, normalizeTraits, type PersonalityTraits } from "./traits.js";
+import { getSetting, setSetting } from "./db.js";
+import type { PersonalityTraits } from "./traits.js";
 
 function shanghaiHour(d = new Date()): number {
   const hour = new Intl.DateTimeFormat("en-US", {
@@ -21,20 +26,16 @@ function shanghaiHour(d = new Date()): number {
   return Number(hour);
 }
 
-/** 性格暂固定默认；日后可接 settings */
+/** 性格来自配置文件 */
 export function getTraits(): PersonalityTraits {
-  const raw = getSetting("personality_traits_json");
-  if (!raw?.trim()) return DEFAULT_TRAITS;
-  try {
-    return normalizeTraits(JSON.parse(raw) as Partial<PersonalityTraits>);
-  } catch {
-    return DEFAULT_TRAITS;
-  }
+  return getConfiguredTraits();
 }
 
 export function loadCompanionState(now = Date.now()): CompanionState {
   const parsed = parseCompanionState(getSetting(STATE_SETTINGS_KEY) || "", now);
-  return parsed ?? createInitialState(now);
+  if (parsed) return parsed;
+  const seed = getCharacterConfig().stateInitial;
+  return createInitialState(now, seed);
 }
 
 export function saveCompanionState(state: CompanionState): void {
@@ -45,7 +46,14 @@ export function saveCompanionState(state: CompanionState): void {
 export function ensureCompanionStateTicked(now = Date.now()): CompanionState {
   const prev = loadCompanionState(now);
   const dt = Math.max(0, now - (prev.updatedAt || now));
-  const next = tickState(prev, getTraits(), dt, shanghaiHour(new Date(now)), now);
+  const next = tickState(
+    prev,
+    getTraits(),
+    dt,
+    shanghaiHour(new Date(now)),
+    now,
+    getCharacterDynamics(),
+  );
   saveCompanionState(next);
   return next;
 }
@@ -64,14 +72,14 @@ export function applyUserMessageToCompanionState(opts: {
 
 export function applyInitiativeSentToCompanionState(now = Date.now()): CompanionState {
   const ticked = ensureCompanionStateTicked(now);
-  const next = onInitiativeSentState(ticked, now);
+  const next = onInitiativeSentState(ticked, now, getCharacterDynamics());
   saveCompanionState(next);
   return next;
 }
 
 export function applyReplySentToCompanionState(now = Date.now()): CompanionState {
   const ticked = ensureCompanionStateTicked(now);
-  const next = onReplySentState(ticked, now);
+  const next = onReplySentState(ticked, now, getCharacterDynamics());
   saveCompanionState(next);
   return next;
 }

@@ -1,7 +1,7 @@
 import { chatCompletion } from "./deepseek.js";
 import { getSetting, setSetting } from "./db.js";
 import { shanghaiYmd } from "./followup.js";
-import { DEFAULT_DOSSIER } from "./persona.js";
+import { getDossierText } from "./character-config.js";
 
 export type TodayState = {
   ymd: string;
@@ -74,7 +74,7 @@ function fallbackState(ymd: string): TodayState {
 }
 
 async function generateTodayState(ymd: string): Promise<TodayState> {
-  const dossier = (getSetting("character_dossier") || DEFAULT_DOSSIER).trim();
+  const dossier = getDossierText().trim();
   const raw = await chatCompletion(
     [
       {

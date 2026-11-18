@@ -1,3 +1,4 @@
+import type { CharacterDynamics } from "./character-config.js";
 import {
   clamp01,
   DEFAULT_TRAITS,
@@ -16,12 +17,26 @@ export type CompanionState = {
 
 export const STATE_SETTINGS_KEY = "companion_state_json";
 
-export function createInitialState(now = Date.now()): CompanionState {
+const DEFAULT_DYNAMICS: CharacterDynamics = {
+  socialRiseBasePerHour: 0.08,
+  socialRiseClingScale: 0.14,
+  crisisHalfLifeBaseHours: 0.5,
+  crisisHalfLifeSensScale: 1.5,
+  initiativeSocialCost: 0.35,
+  replyEnergyCost: 0.05,
+};
+
+export function createInitialState(
+  now = Date.now(),
+  seed?: Partial<
+    Pick<CompanionState, "energy" | "mood" | "socialDrive" | "crisisResidue">
+  >,
+): CompanionState {
   return {
-    energy: 0.7,
-    mood: 0.65,
-    socialDrive: 0.35,
-    crisisResidue: 0,
+    energy: clamp01(seed?.energy ?? 0.7),
+    mood: clamp01(seed?.mood ?? 0.65),
+    socialDrive: clamp01(seed?.socialDrive ?? 0.35),
+    crisisResidue: clamp01(seed?.crisisResidue ?? 0),
     updatedAt: now,
   };
 }
@@ -80,6 +95,7 @@ export function tickState(
   dtMs: number,
   hour: number,
   now = Date.now(),
+  dynamics: CharacterDynamics = DEFAULT_DYNAMICS,
 ): CompanionState {
   const dt = Math.max(0, dtMs);
   if (dt === 0) {
@@ -92,13 +108,16 @@ export function tickState(
   // 精力向时段基线靠拢
   let energy = state.energy + (baseline - state.energy) * Math.min(1, hours * 0.35);
   // 空闲回升一点社交欲（黏人涨得快）
-  const socialRisePerHour = 0.08 + traits.cling * 0.14;
+  const socialRisePerHour =
+    dynamics.socialRiseBasePerHour + traits.cling * dynamics.socialRiseClingScale;
   let socialDrive = state.socialDrive + socialRisePerHour * hours;
   // 心情缓慢回中
   let mood = state.mood + (0.6 - state.mood) * Math.min(1, hours * 0.15);
   // 危机残留衰减：敏感越高衰减越慢
-  const crisisHalfLifeH = 0.5 + traits.heavySensitivity * 1.5;
-  const crisisDecay = Math.pow(0.5, hours / crisisHalfLifeH);
+  const crisisHalfLifeH =
+    dynamics.crisisHalfLifeBaseHours +
+    traits.heavySensitivity * dynamics.crisisHalfLifeSensScale;
+  const crisisDecay = Math.pow(0.5, hours / Math.max(0.1, crisisHalfLifeH));
   let crisisResidue = state.crisisResidue * crisisDecay;
 
   return {
@@ -141,10 +160,11 @@ export function onUserMessageState(
 export function onInitiativeSentState(
   state: CompanionState,
   now = Date.now(),
+  dynamics: CharacterDynamics = DEFAULT_DYNAMICS,
 ): CompanionState {
   return {
     ...state,
-    socialDrive: clamp01(state.socialDrive - 0.35),
+    socialDrive: clamp01(state.socialDrive - dynamics.initiativeSocialCost),
     energy: clamp01(state.energy - 0.04),
     updatedAt: now,
   };
@@ -154,10 +174,11 @@ export function onInitiativeSentState(
 export function onReplySentState(
   state: CompanionState,
   now = Date.now(),
+  dynamics: CharacterDynamics = DEFAULT_DYNAMICS,
 ): CompanionState {
   return {
     ...state,
-    energy: clamp01(state.energy - 0.05),
+    energy: clamp01(state.energy - dynamics.replyEnergyCost),
     socialDrive: clamp01(state.socialDrive * 0.9),
     updatedAt: now,
   };

@@ -19,8 +19,6 @@ type Me = {
   authenticated: boolean;
   companionName?: string;
   userNickname?: string;
-  persona?: string;
-  characterDossier?: string;
   proactiveEnabled?: boolean;
   clockPingEnabled?: boolean;
   pushNotifyEnabled?: boolean;
@@ -29,9 +27,6 @@ type Me = {
   initiativeUsedToday?: number;
   idleMinMinutes?: number;
   idleMaxMinutes?: number;
-  todayState?: string;
-  daySchedule?: string;
-  continuityThreads?: string;
 };
 
 async function api<T>(
@@ -70,8 +65,6 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [companionName, setCompanionName] = useState("阿深");
   const [userNickname, setUserNickname] = useState("你");
-  const [persona, setPersona] = useState("");
-  const [characterDossier, setCharacterDossier] = useState("");
   const [proactiveEnabled, setProactiveEnabled] = useState(true);
   const [clockPingEnabled, setClockPingEnabled] = useState(true);
   const [pushNotifyEnabled, setPushNotifyEnabled] = useState(false);
@@ -80,9 +73,6 @@ export function App() {
   const [initiativeUsedToday, setInitiativeUsedToday] = useState(0);
   const [idleMinMinutes, setIdleMinMinutes] = useState(3);
   const [idleMaxMinutes, setIdleMaxMinutes] = useState(12);
-  const [todayState, setTodayState] = useState("");
-  const [daySchedule, setDaySchedule] = useState("");
-  const [continuityThreads, setContinuityThreads] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   /** 仅在贴近底部或刚发送时跟随滚底 */
@@ -109,8 +99,6 @@ export function App() {
     if (res.data.authenticated) {
       setCompanionName(res.data.companionName || "阿深");
       setUserNickname(res.data.userNickname || "你");
-      setPersona(res.data.persona || "");
-      setCharacterDossier(res.data.characterDossier || "");
       setProactiveEnabled(Boolean(res.data.proactiveEnabled));
       setClockPingEnabled(res.data.clockPingEnabled !== false);
       setPushNotifyEnabled(Boolean(res.data.pushNotifyEnabled));
@@ -136,9 +124,6 @@ export function App() {
           ? res.data.idleMaxMinutes
           : 12,
       );
-      setTodayState(res.data.todayState || "");
-      setDaySchedule(res.data.daySchedule || "");
-      setContinuityThreads(res.data.continuityThreads || "");
     }
   }
 
@@ -317,8 +302,6 @@ export function App() {
       body: JSON.stringify({
         companionName,
         userNickname,
-        persona,
-        characterDossier,
         proactiveEnabled,
         clockPingEnabled,
         initiativeDailyCap,
@@ -330,43 +313,7 @@ export function App() {
       setNotice(res.error);
       return;
     }
-    setNotice("设置已保存；建议清空对话后再聊，人设更干净");
-    await refreshMe();
-  }
-
-  async function regenerateToday() {
-    const res = await api<{
-      ok: boolean;
-      todayState?: string;
-      daySchedule?: string;
-    }>("/api/settings", {
-      method: "POST",
-      body: JSON.stringify({ regenerateTodayState: true }),
-    });
-    if (!res.ok) {
-      setNotice(res.error);
-      return;
-    }
-    setTodayState(res.data.todayState || "");
-    setDaySchedule(res.data.daySchedule || "");
-    setNotice("今日状态与时刻表已重新生成");
-    await refreshMe();
-  }
-
-  async function refreshContinuity() {
-    const res = await api<{ ok: boolean; continuityThreads?: string }>(
-      "/api/settings",
-      {
-        method: "POST",
-        body: JSON.stringify({ refreshContinuityThreads: true }),
-      },
-    );
-    if (!res.ok) {
-      setNotice(res.error);
-      return;
-    }
-    setContinuityThreads(res.data.continuityThreads || "");
-    setNotice("未完线已刷新");
+    setNotice("设置已保存");
     await refreshMe();
   }
 
@@ -491,26 +438,6 @@ export function App() {
                 onChange={(e) => setUserNickname(e.target.value)}
               />
             </label>
-            <label>
-              说话方式 / 人设
-              <textarea
-                className="persona-input"
-                rows={8}
-                value={persona}
-                onChange={(e) => setPersona(e.target.value)}
-                placeholder="描述关系、语气、用词与禁忌…"
-              />
-            </label>
-            <label>
-              她是谁 / 小档案
-              <textarea
-                className="persona-input"
-                rows={6}
-                value={characterDossier}
-                onChange={(e) => setCharacterDossier(e.target.value)}
-                placeholder="作息、口味、习惯、脾气…"
-              />
-            </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input
                 type="checkbox"
@@ -589,44 +516,9 @@ export function App() {
                 }
               />
             </label>
-            <label>
-              今日状态（只读，聊天会偶尔引用）
-              <textarea
-                className="persona-input"
-                rows={3}
-                value={todayState || "（尚未生成，打开设置或聊一句后会出现）"}
-                readOnly
-              />
-            </label>
-            <label>
-              今日时刻表（只读）
-              <textarea
-                className="persona-input"
-                rows={6}
-                value={daySchedule || "（尚未生成）"}
-                readOnly
-              />
-            </label>
-            <label>
-              近期未完线（只读，可续上）
-              <textarea
-                className="persona-input"
-                rows={4}
-                value={
-                  continuityThreads || "（聊一会儿后刷新，或等自动抽取）"
-                }
-                readOnly
-              />
-            </label>
             <div className="settings-row">
               <button className="primary" type="button" onClick={() => void saveSettings()}>
                 保存设置
-              </button>
-              <button className="ghost" type="button" onClick={() => void regenerateToday()}>
-                重新生成今日
-              </button>
-              <button className="ghost" type="button" onClick={() => void refreshContinuity()}>
-                刷新未完线
               </button>
               <button className="ghost" type="button" onClick={() => void resetInitiativeUsed()}>
                 清零今日已用
