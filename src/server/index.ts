@@ -22,7 +22,21 @@ import {
   listMessages,
   setSetting,
 } from "./db.js";
+import { DEFAULT_DOSSIER, DEFAULT_PERSONA } from "./persona.js";
 import { startProactiveLoop } from "./proactive.js";
+import {
+  isReplyGenerating,
+  noteTyping,
+  resetReplyScheduler,
+} from "./reply-scheduler.js";
+
+function currentPersona(): string {
+  return getSetting("persona") || config.persona || DEFAULT_PERSONA;
+}
+
+function currentDossier(): string {
+  return getSetting("character_dossier") || DEFAULT_DOSSIER;
+}
 
 const app = new Hono();
 
@@ -36,6 +50,8 @@ app.get("/api/me", (c) => {
     authenticated: true,
     companionName: getSetting("companion_name") || config.companionName,
     userNickname: getSetting("user_nickname") || config.userNickname,
+    persona: currentPersona(),
+    characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
   });
 });
@@ -75,6 +91,18 @@ api.post("/chat", async (c) => {
   return c.json(result);
 });
 
+api.post("/typing", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    typing?: boolean;
+  } | null;
+  noteTyping(Boolean(body?.typing));
+  return c.json({ ok: true });
+});
+
+api.get("/reply-status", (c) => {
+  return c.json({ generating: isReplyGenerating() });
+});
+
 api.get("/memories", (c) => {
   return c.json({ memories: listMemories() });
 });
@@ -86,6 +114,7 @@ api.post("/memories/clear", (c) => {
 
 api.post("/messages/clear", (c) => {
   clearMessages();
+  resetReplyScheduler();
   return c.json({ ok: true });
 });
 
@@ -93,6 +122,8 @@ api.get("/settings", (c) => {
   return c.json({
     companionName: getSetting("companion_name") || config.companionName,
     userNickname: getSetting("user_nickname") || config.userNickname,
+    persona: currentPersona(),
+    characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
   });
 });
@@ -101,6 +132,8 @@ api.post("/settings", async (c) => {
   const body = (await c.req.json().catch(() => null)) as {
     companionName?: string;
     userNickname?: string;
+    persona?: string;
+    characterDossier?: string;
     proactiveEnabled?: boolean;
   } | null;
   if (!body) return c.json({ error: "无效请求" }, 400);
@@ -109,6 +142,14 @@ api.post("/settings", async (c) => {
   }
   if (typeof body.userNickname === "string" && body.userNickname.trim()) {
     setSetting("user_nickname", body.userNickname.trim());
+  }
+  if (typeof body.persona === "string") {
+    const text = body.persona.trim();
+    if (text) setSetting("persona", text);
+  }
+  if (typeof body.characterDossier === "string") {
+    const text = body.characterDossier.trim();
+    if (text) setSetting("character_dossier", text);
   }
   if (typeof body.proactiveEnabled === "boolean") {
     setSetting("proactive_enabled", body.proactiveEnabled ? "1" : "0");

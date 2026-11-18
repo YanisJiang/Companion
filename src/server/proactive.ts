@@ -7,19 +7,7 @@ import {
   insertMessage,
   setSetting,
 } from "./db.js";
-
-function localYmd(d = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(d);
-  const y = parts.find((p) => p.type === "year")?.value;
-  const m = parts.find((p) => p.type === "month")?.value;
-  const day = parts.find((p) => p.type === "day")?.value;
-  return `${y}-${m}-${day}`;
-}
+import { shanghaiYmd, tickIdlePing } from "./followup.js";
 
 function localHour(d = new Date()): number {
   const hour = new Intl.DateTimeFormat("en-US", {
@@ -30,7 +18,7 @@ function localHour(d = new Date()): number {
   return Number(hour);
 }
 
-export async function tickProactive() {
+async function tickDailyGreeting() {
   const enabled = getSetting("proactive_enabled") === "1";
   if (!enabled) return;
 
@@ -38,11 +26,15 @@ export async function tickProactive() {
   const start = config.proactiveHourStart;
   const end = config.proactiveHourEnd;
   const inWindow =
-    start === end ? true : start < end ? hour >= start && hour < end : hour >= start || hour < end;
+    start === end
+      ? true
+      : start < end
+        ? hour >= start && hour < end
+        : hour >= start || hour < end;
 
   if (!inWindow) return;
 
-  const today = localYmd();
+  const today = shanghaiYmd();
   if (getSetting("last_proactive_date") === today) return;
   if (hasProactiveOnLocalDate(today)) {
     setSetting("last_proactive_date", today);
@@ -58,6 +50,11 @@ export async function tickProactive() {
   } catch (err) {
     console.error("[proactive] 失败", err);
   }
+}
+
+export async function tickProactive() {
+  await tickIdlePing();
+  await tickDailyGreeting();
 }
 
 export function startProactiveLoop() {

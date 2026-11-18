@@ -2,6 +2,11 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.js";
+import {
+  DEFAULT_DOSSIER,
+  DEFAULT_PERSONA,
+  PERSONA_SEED_VERSION,
+} from "./persona.js";
 
 mkdirSync(config.dataDir, { recursive: true });
 
@@ -35,6 +40,8 @@ db.exec(`
 const defaults: Record<string, string> = {
   companion_name: config.companionName,
   user_nickname: config.userNickname,
+  persona: config.persona || DEFAULT_PERSONA,
+  character_dossier: DEFAULT_DOSSIER,
   proactive_enabled: config.proactiveEnabled ? "1" : "0",
   last_proactive_date: "",
 };
@@ -74,6 +81,13 @@ export function setSetting(key: string, value: string) {
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).run(key, value);
+}
+
+// 人设种子版本变化时覆盖默认 persona + 小档案（用户之后仍可在设置里改）
+if (getSetting("persona_seed_version") !== PERSONA_SEED_VERSION) {
+  setSetting("persona", config.persona || DEFAULT_PERSONA);
+  setSetting("character_dossier", DEFAULT_DOSSIER);
+  setSetting("persona_seed_version", PERSONA_SEED_VERSION);
 }
 
 export function listMessages(limit = 200): MessageRow[] {

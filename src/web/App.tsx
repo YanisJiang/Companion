@@ -12,6 +12,8 @@ type Me = {
   authenticated: boolean;
   companionName?: string;
   userNickname?: string;
+  persona?: string;
+  characterDossier?: string;
   proactiveEnabled?: boolean;
 };
 
@@ -38,19 +40,100 @@ async function api<T>(
   return { ok: true, data: data as T };
 }
 
+const TIME_GAP_MS = 5 * 60 * 1000;
+const TZ = "Asia/Shanghai";
+
+/** SQLite datetime('now') 为 UTC 无时区；乐观更新可能是 ISO。 */
+function parseMessageTime(raw: string): Date {
+  const s = raw.trim();
+  if (!s) return new Date(NaN);
+  if (/[tT]/.test(s) || /[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) {
+    return new Date(s);
+  }
+  return new Date(`${s.replace(" ", "T")}Z`);
+}
+
+function shanghaiYmd(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function formatChatTime(raw: string, now = new Date()): string {
+  const d = parseMessageTime(raw);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const hm = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+
+  const day = shanghaiYmd(d);
+  const today = shanghaiYmd(now);
+  const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const yesterday = shanghaiYmd(yesterdayDate);
+
+  if (day === today) return hm;
+  if (day === yesterday) return `昨天 ${hm}`;
+
+  const year = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+  }).format(d);
+  const thisYear = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+  }).format(now);
+
+  if (year === thisYear) {
+    const md = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: TZ,
+      month: "numeric",
+      day: "numeric",
+    }).format(d);
+    return `${md} ${hm}`;
+  }
+
+  const full = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).format(d);
+  return `${full} ${hm}`;
+}
+
+function shouldShowTime(prev: Message | undefined, curr: Message): boolean {
+  if (!prev) return true;
+  const a = parseMessageTime(prev.created_at).getTime();
+  const b = parseMessageTime(curr.created_at).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return false;
+  return Math.abs(b - a) >= TIME_GAP_MS;
+}
+
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
-  const [typing, setTyping] = useState(false);
+  const [awaitingReply, setAwaitingReply] = useState(false);
+  const [showTypingHint, setShowTypingHint] = useState(false);
+  const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [companionName, setCompanionName] = useState("阿深");
   const [userNickname, setUserNickname] = useState("你");
+  const [persona, setPersona] = useState("");
+  const [characterDossier, setCharacterDossier] = useState("");
   const [proactiveEnabled, setProactiveEnabled] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastSendAt = useRef(0);
 
   async function refreshMe() {
     const res = await api<Me>("/api/me");
@@ -62,13 +145,26 @@ export function App() {
     if (res.data.authenticated) {
       setCompanionName(res.data.companionName || "阿深");
       setUserNickname(res.data.userNickname || "你");
+      setPersona(res.data.persona || "");
+      setCharacterDossier(res.data.characterDossier || "");
       setProactiveEnabled(Boolean(res.data.proactiveEnabled));
     }
   }
 
   async function refreshMessages() {
     const res = await api<{ messages: Message[] }>("/api/messages");
-    if (res.ok) setMessages(res.data.messages);
+    if (!res.ok) return;
+    setMessages(res.data.messages);
+    const list = res.data.messages.filter(
+      (m) => m.role === "user" || m.role === "assistant",
+    );
+    const last = list[list.length - 1];
+    if (last?.role === "assistant") setAwaitingReply(false);
+    else if (last?.role === "user") setAwaitingReply(true);
+
+    const status = await api<{ generating: boolean }>("/api/reply-status");
+    if (status.ok) setShowTypingHint(status.data.generating);
+    else if (last?.role === "assistant") setShowTypingHint(false);
   }
 
   useEffect(() => {
@@ -80,13 +176,13 @@ export function App() {
     void refreshMessages();
     const t = setInterval(() => {
       void refreshMessages();
-    }, 15000);
+    }, 2000);
     return () => clearInterval(t);
   }, [me?.authenticated]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typing]);
+  }, [messages, showTypingHint]);
 
   async function onLogin(e: FormEvent) {
     e.preventDefault();
@@ -112,10 +208,11 @@ export function App() {
   async function onSend(e: FormEvent) {
     e.preventDefault();
     const content = draft.trim();
-    if (!content || typing) return;
+    if (!content || sending) return;
     setDraft("");
-    setTyping(true);
+    setSending(true);
     setNotice("");
+    lastSendAt.current = Date.now();
     const optimistic: Message = {
       id: Date.now(),
       role: "user",
@@ -124,24 +221,31 @@ export function App() {
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimistic]);
+    setAwaitingReply(true);
 
     const res = await api<{
       reply: string;
       messages: Message[];
       notice?: string;
+      pending?: boolean;
     }>("/api/chat", {
       method: "POST",
       body: JSON.stringify({ content }),
     });
-    setTyping(false);
+    setSending(false);
     if (!res.ok) {
       setNotice(res.error);
+      setAwaitingReply(false);
       await refreshMessages();
       return;
     }
     setMessages(res.data.messages);
     if (res.data.notice) setNotice(res.data.notice);
-    await refreshMe();
+    if (res.data.pending === false) setAwaitingReply(false);
+  }
+
+  function onDraftChange(value: string) {
+    setDraft(value);
   }
 
   async function saveSettings() {
@@ -150,6 +254,8 @@ export function App() {
       body: JSON.stringify({
         companionName,
         userNickname,
+        persona,
+        characterDossier,
         proactiveEnabled,
       }),
     });
@@ -157,7 +263,7 @@ export function App() {
       setNotice(res.error);
       return;
     }
-    setNotice("设置已保存");
+    setNotice("设置已保存；建议清空对话后再聊，人设更干净");
     await refreshMe();
   }
 
@@ -240,6 +346,26 @@ export function App() {
               onChange={(e) => setUserNickname(e.target.value)}
             />
           </label>
+          <label>
+            说话方式 / 人设
+            <textarea
+              className="persona-input"
+              rows={8}
+              value={persona}
+              onChange={(e) => setPersona(e.target.value)}
+              placeholder="描述关系、语气、用词与禁忌…"
+            />
+          </label>
+          <label>
+            她是谁 / 小档案
+            <textarea
+              className="persona-input"
+              rows={6}
+              value={characterDossier}
+              onChange={(e) => setCharacterDossier(e.target.value)}
+              placeholder="作息、口味、习惯、脾气…"
+            />
+          </label>
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input
               type="checkbox"
@@ -270,23 +396,26 @@ export function App() {
       <div className="messages">
         {messages
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => (
-            <div
-              key={m.id}
-              className={`bubble ${m.role}${m.is_proactive ? " proactive" : ""}`}
-            >
-              {m.content}
-            </div>
-          ))}
-        {typing ? <div className="typing">正在输入…</div> : null}
+          .map((m, index, list) => {
+            const prev = index > 0 ? list[index - 1] : undefined;
+            const showTime = shouldShowTime(prev, m);
+            const timeLabel = showTime ? formatChatTime(m.created_at) : "";
+            return (
+              <div key={m.id} className="message-block">
+                {timeLabel ? <div className="time-divider">{timeLabel}</div> : null}
+                <div className={`bubble ${m.role}`}>{m.content}</div>
+              </div>
+            );
+          })}
+        {showTypingHint ? <div className="typing">正在输入…</div> : null}
         <div ref={bottomRef} />
       </div>
 
       <form className="composer" onSubmit={onSend}>
         <textarea
           value={draft}
-          placeholder="说点什么…"
-          onChange={(e) => setDraft(e.target.value)}
+          placeholder="说点什么…可连发短泡"
+          onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -294,7 +423,7 @@ export function App() {
             }
           }}
         />
-        <button className="primary" type="submit" disabled={typing || !draft.trim()}>
+        <button className="primary" type="submit" disabled={sending || !draft.trim()}>
           发送
         </button>
       </form>

@@ -51,6 +51,8 @@ export const config = {
   deepseekModel: required("DEEPSEEK_MODEL", "deepseek-chat"),
   companionName: required("COMPANION_NAME", "阿深"),
   userNickname: required("USER_NICKNAME", "你"),
+  /** 仅作首次写入 settings 的默认；之后以库内 persona 为准 */
+  persona: process.env.PERSONA?.trim() || "",
   proactiveEnabled: bool("PROACTIVE_ENABLED", true),
   proactiveHourStart: int("PROACTIVE_HOUR_START", 21),
   proactiveHourEnd: int("PROACTIVE_HOUR_END", 22),

@@ -7,6 +7,7 @@ export type ChatMessage = {
 
 export async function chatCompletion(
   messages: ChatMessage[],
+  opts?: { temperature?: number; maxTokens?: number },
 ): Promise<string> {
   if (!config.deepseekApiKey) {
     throw new Error("未配置 DEEPSEEK_API_KEY");
@@ -22,7 +23,8 @@ export async function chatCompletion(
     body: JSON.stringify({
       model: config.deepseekModel,
       messages,
-      temperature: 0.7,
+      temperature: opts?.temperature ?? 0.9,
+      ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
     }),
   });
 
