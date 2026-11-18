@@ -4,6 +4,7 @@ import {
   insertMessage,
   setSetting,
 } from "./db.js";
+import { isInHeavyCooldown } from "./crisis.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { ensureTodayState } from "./today.js";
 
@@ -135,6 +136,10 @@ export function cancelPendingFollowup(): void {
 
 export function scheduleFollowupAfterReply(): void {
   if (getSetting("proactive_enabled") !== "1") return;
+  if (isInHeavyCooldown()) {
+    console.log("[followup] skip: heavy cooldown");
+    return;
+  }
   if (!canSendInitiative()) {
     console.log("[followup] skip: daily cap reached", {
       used: getInitiativeUsedToday(),
@@ -157,6 +162,10 @@ export function scheduleFollowupAfterReply(): void {
 async function runFollowup(gen: number): Promise<void> {
   if (gen !== followupGen) return;
   if (getSetting("proactive_enabled") !== "1") return;
+  if (isInHeavyCooldown()) {
+    console.log("[followup] skip run: heavy cooldown");
+    return;
+  }
   if (!canSendInitiative()) return;
 
   try {
@@ -196,6 +205,11 @@ export async function tickIdlePing(): Promise<void> {
   if (!dueRaw) return;
   const due = Number(dueRaw);
   if (!Number.isFinite(due) || Date.now() < due) return;
+  if (isInHeavyCooldown()) {
+    console.log("[idle] skip: heavy cooldown");
+    clearIdleDue();
+    return;
+  }
   if (!canSendInitiative()) {
     console.log("[idle] skip: daily cap reached", {
       used: getInitiativeUsedToday(),

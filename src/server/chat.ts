@@ -4,7 +4,12 @@ import {
   recentMessages,
   type MessageRow,
 } from "./db.js";
-import { bumpIdleDue, cancelPendingFollowup } from "./followup.js";
+import { isInHeavyCooldown, noteUserTextForCrisis } from "./crisis.js";
+import {
+  bumpIdleDue,
+  cancelPendingFollowup,
+  clearIdleDue,
+} from "./followup.js";
 import { chatCompletion, type ChatMessage } from "./deepseek.js";
 import { buildSystemPrompt } from "./prompt.js";
 import {
@@ -49,7 +54,13 @@ export async function handleUserMessage(raw: string): Promise<ChatResult> {
   }
 
   insertMessage("user", text);
-  bumpIdleDue();
+  noteUserTextForCrisis(text, () => {
+    cancelPendingFollowup();
+    clearIdleDue();
+  });
+  // 冷静窗内不排日常安静找你，避免到点再被跳过
+  if (!isInHeavyCooldown()) bumpIdleDue();
+  else clearIdleDue();
   scheduleReplyAfterUserMessage(text.length);
 
   return {
