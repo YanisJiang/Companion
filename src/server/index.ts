@@ -31,6 +31,14 @@ import {
   setClockPingEnabled,
 } from "./clock.js";
 import {
+  getVapidPublicKey,
+  isPushConfigured,
+  isPushNotifyEnabled,
+  savePushSubscription,
+  setPushNotifyEnabled,
+  type PushSubscriptionJSON,
+} from "./push.js";
+import {
   getIdleWindowMinutes,
   getInitiativeDailyCap,
   getInitiativeUsedToday,
@@ -86,6 +94,8 @@ app.get("/api/me", async (c) => {
     characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
     clockPingEnabled: isClockPingEnabled(),
+    pushNotifyEnabled: isPushNotifyEnabled(),
+    pushConfigured: isPushConfigured(),
     initiativeDailyCap: getInitiativeDailyCap(),
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: getIdleWindowMinutes().min,
@@ -172,6 +182,8 @@ api.get("/settings", async (c) => {
     characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
     clockPingEnabled: isClockPingEnabled(),
+    pushNotifyEnabled: isPushNotifyEnabled(),
+    pushConfigured: isPushConfigured(),
     initiativeDailyCap: getInitiativeDailyCap(),
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: getIdleWindowMinutes().min,
@@ -179,6 +191,35 @@ api.get("/settings", async (c) => {
     todayState: today ? formatTodayState(today) : "",
     daySchedule: schedule ? formatSchedule(schedule, shanghaiYmd()) : "",
     continuityThreads: continuity ? formatContinuity(continuity) : "",
+  });
+});
+
+api.get("/push/vapid-public", (c) => {
+  if (!isPushConfigured()) {
+    return c.json({ error: "未配置 VAPID", configured: false }, 503);
+  }
+  return c.json({ publicKey: getVapidPublicKey(), configured: true });
+});
+
+api.post("/push/subscribe", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    subscription?: PushSubscriptionJSON | null;
+    enabled?: boolean;
+  } | null;
+  if (!body) return c.json({ error: "无效请求" }, 400);
+  if (typeof body.enabled === "boolean") {
+    setPushNotifyEnabled(body.enabled);
+  }
+  if (body.subscription === null) {
+    savePushSubscription(null);
+  } else if (body.subscription && typeof body.subscription.endpoint === "string") {
+    savePushSubscription(body.subscription);
+    setPushNotifyEnabled(true);
+  }
+  return c.json({
+    ok: true,
+    pushNotifyEnabled: isPushNotifyEnabled(),
+    pushConfigured: isPushConfigured(),
   });
 });
 
@@ -190,6 +231,7 @@ api.post("/settings", async (c) => {
     characterDossier?: string;
     proactiveEnabled?: boolean;
     clockPingEnabled?: boolean;
+    pushNotifyEnabled?: boolean;
     initiativeDailyCap?: number;
     idleMinMinutes?: number;
     idleMaxMinutes?: number;
@@ -217,6 +259,9 @@ api.post("/settings", async (c) => {
   }
   if (typeof body.clockPingEnabled === "boolean") {
     setClockPingEnabled(body.clockPingEnabled);
+  }
+  if (typeof body.pushNotifyEnabled === "boolean") {
+    setPushNotifyEnabled(body.pushNotifyEnabled);
   }
   if (typeof body.initiativeDailyCap === "number") {
     setInitiativeDailyCap(body.initiativeDailyCap);
@@ -257,6 +302,8 @@ api.post("/settings", async (c) => {
   return c.json({
     ok: true,
     clockPingEnabled: isClockPingEnabled(),
+    pushNotifyEnabled: isPushNotifyEnabled(),
+    pushConfigured: isPushConfigured(),
     initiativeDailyCap: getInitiativeDailyCap(),
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: idle.min,

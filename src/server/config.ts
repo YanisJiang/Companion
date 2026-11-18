@@ -61,4 +61,11 @@ export const config = {
   summarizeEveryUserMessages: 12,
   cookieName: "companion_session",
   sessionTtlMs: 1000 * 60 * 60 * 24 * 14,
+  /** Web Push VAPID；未配则跳过系统推送 */
+  vapidPublicKey: (process.env.VAPID_PUBLIC_KEY ?? "").trim(),
+  vapidPrivateKey: (process.env.VAPID_PRIVATE_KEY ?? "").trim(),
+  vapidSubject: required(
+    "VAPID_SUBJECT",
+    "mailto:companion@localhost",
+  ),
 };

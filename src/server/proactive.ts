@@ -22,6 +22,7 @@ import {
   decideInitiativeTone,
   noteUnansweredInitiative,
 } from "./initiative-context.js";
+import { notifyProactivePush } from "./push.js";
 import { ensureTodayState } from "./today.js";
 
 function localHour(d = new Date()): number {
@@ -77,6 +78,7 @@ async function tickDailyGreeting() {
     if (streak >= 2) clearIdleDue();
     else bumpIdleDueAfterUnanswered();
     setSetting("last_proactive_date", today);
+    void notifyProactivePush(text);
     console.log("[proactive] 已发送主动消息", { tone, streak });
   } catch (err) {
     console.error("[proactive] 失败", err);

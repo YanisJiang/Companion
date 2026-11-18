@@ -13,6 +13,7 @@ import {
   noteUnansweredInitiative,
 } from "./initiative-context.js";
 import { DEFAULT_DOSSIER } from "./persona.js";
+import { notifyProactivePush } from "./push.js";
 import { readStoredTodayState } from "./today.js";
 
 export type ScheduleEvent = {
@@ -255,6 +256,7 @@ async function pingForEvent(label: string): Promise<boolean> {
     const streak = noteUnansweredInitiative();
     if (streak >= 2) clearIdleDue();
     else bumpIdleDueAfterUnanswered();
+    void notifyProactivePush(text);
     console.log("[clock] pinged", { label, tone });
     return true;
   } catch (err) {

@@ -1,5 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { formatChatTime, shouldShowTime } from "./chatTime";
+import {
+  ensureNotificationPermission,
+  maybeLocalNotifyProactive,
+  subscribeWebPush,
+  unsubscribeWebPush,
+} from "./notify";
 
 type Message = {
   id: number;
@@ -17,6 +23,8 @@ type Me = {
   characterDossier?: string;
   proactiveEnabled?: boolean;
   clockPingEnabled?: boolean;
+  pushNotifyEnabled?: boolean;
+  pushConfigured?: boolean;
   initiativeDailyCap?: number;
   initiativeUsedToday?: number;
   idleMinMinutes?: number;
@@ -66,6 +74,8 @@ export function App() {
   const [characterDossier, setCharacterDossier] = useState("");
   const [proactiveEnabled, setProactiveEnabled] = useState(true);
   const [clockPingEnabled, setClockPingEnabled] = useState(true);
+  const [pushNotifyEnabled, setPushNotifyEnabled] = useState(false);
+  const [pushConfigured, setPushConfigured] = useState(false);
   const [initiativeDailyCap, setInitiativeDailyCap] = useState(8);
   const [initiativeUsedToday, setInitiativeUsedToday] = useState(0);
   const [idleMinMinutes, setIdleMinMinutes] = useState(3);
@@ -78,6 +88,7 @@ export function App() {
   /** 仅在贴近底部或刚发送时跟随滚底 */
   const stickToBottom = useRef(true);
   const lastSendAt = useRef(0);
+  const pushNotifyEnabledRef = useRef(false);
 
   useEffect(() => {
     if (!showSettings) return;
@@ -102,6 +113,9 @@ export function App() {
       setCharacterDossier(res.data.characterDossier || "");
       setProactiveEnabled(Boolean(res.data.proactiveEnabled));
       setClockPingEnabled(res.data.clockPingEnabled !== false);
+      setPushNotifyEnabled(Boolean(res.data.pushNotifyEnabled));
+      pushNotifyEnabledRef.current = Boolean(res.data.pushNotifyEnabled);
+      setPushConfigured(Boolean(res.data.pushConfigured));
       setInitiativeDailyCap(
         typeof res.data.initiativeDailyCap === "number"
           ? res.data.initiativeDailyCap
@@ -138,10 +152,70 @@ export function App() {
     const last = list[list.length - 1];
     if (last?.role === "assistant") setAwaitingReply(false);
     else if (last?.role === "user") setAwaitingReply(true);
+    if (pushNotifyEnabledRef.current && last) maybeLocalNotifyProactive(last);
 
     const status = await api<{ generating: boolean }>("/api/reply-status");
     if (status.ok) setShowTypingHint(status.data.generating);
     else if (last?.role === "assistant") setShowTypingHint(false);
+  }
+
+  async function enableSystemPush(): Promise<boolean> {
+    const allowed = await ensureNotificationPermission();
+    if (!allowed) {
+      setNotice("浏览器拒绝了通知权限");
+      return false;
+    }
+    const vapid = await api<{ publicKey: string; configured: boolean }>(
+      "/api/push/vapid-public",
+    );
+    if (!vapid.ok) {
+      setNotice(vapid.error || "服务器未配置推送密钥（需 HTTPS + VAPID）");
+      return false;
+    }
+    if (!vapid.data.publicKey) {
+      setNotice("服务器未配置推送密钥（需 HTTPS + VAPID）");
+      return false;
+    }
+    try {
+      const sub = await subscribeWebPush(vapid.data.publicKey);
+      if (!sub) {
+        setNotice("当前环境不支持 Web Push（需 HTTPS 或 localhost）");
+        return false;
+      }
+      const res = await api("/api/push/subscribe", {
+        method: "POST",
+        body: JSON.stringify({ enabled: true, subscription: sub }),
+      });
+      if (!res.ok) {
+        setNotice(res.error);
+        return false;
+      }
+      setPushNotifyEnabled(true);
+      pushNotifyEnabledRef.current = true;
+      setPushConfigured(true);
+      return true;
+    } catch (err) {
+      setNotice(
+        err instanceof Error
+          ? err.message
+          : "订阅推送失败（HTTP 站点通常不行，需 HTTPS）",
+      );
+      return false;
+    }
+  }
+
+  async function disableSystemPush(): Promise<void> {
+    try {
+      await unsubscribeWebPush();
+    } catch {
+      /* ignore */
+    }
+    await api("/api/push/subscribe", {
+      method: "POST",
+      body: JSON.stringify({ enabled: false, subscription: null }),
+    });
+    setPushNotifyEnabled(false);
+    pushNotifyEnabledRef.current = false;
   }
 
   useEffect(() => {
@@ -453,6 +527,29 @@ export function App() {
               />
               允许事件到点找我（生活时钟）
             </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={pushNotifyEnabled}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  void (async () => {
+                    if (on) {
+                      const ok = await enableSystemPush();
+                      if (!ok) setPushNotifyEnabled(false);
+                    } else {
+                      await disableSystemPush();
+                    }
+                  })();
+                }}
+              />
+              系统通知（主动消息推送）
+            </label>
+            {!pushConfigured ? (
+              <p className="notice" style={{ margin: 0 }}>
+                推送需服务器配置 VAPID，且网站最好是 HTTPS；页在后台时也会尝试本地通知。
+              </p>
+            ) : null}
             <label>
               每日主动额度（续话+安静找你+事件找你合计，0～50）
               <input

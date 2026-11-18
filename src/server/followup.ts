@@ -12,6 +12,7 @@ import {
   type InitiativeTone,
 } from "./initiative-context.js";
 import { buildSystemPrompt } from "./prompt.js";
+import { notifyProactivePush } from "./push.js";
 import { ensureTodayState } from "./today.js";
 
 const FOLLOWUP_PROB = 0.2;
@@ -138,6 +139,7 @@ function commitInitiativeMessage(text: string): void {
   } else {
     bumpIdleDueAfterUnanswered();
   }
+  void notifyProactivePush(text);
 }
 
 /** 用户刚发过消息：重设「安静后找你」的到期时间。 */
