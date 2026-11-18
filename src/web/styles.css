@@ -218,6 +218,32 @@ button {
   padding: 12px;
 }
 
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 12px;
+  background: rgba(6, 8, 14, 0.72);
+  overflow: auto;
+}
+
+.settings-panel {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  margin: 0;
+}
+
+.settings-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .settings {
   display: grid;
   gap: 10px;

@@ -16,11 +16,13 @@ type Me = {
   persona?: string;
   characterDossier?: string;
   proactiveEnabled?: boolean;
+  clockPingEnabled?: boolean;
   initiativeDailyCap?: number;
   initiativeUsedToday?: number;
   idleMinMinutes?: number;
   idleMaxMinutes?: number;
   todayState?: string;
+  daySchedule?: string;
   continuityThreads?: string;
 };
 
@@ -63,17 +65,28 @@ export function App() {
   const [persona, setPersona] = useState("");
   const [characterDossier, setCharacterDossier] = useState("");
   const [proactiveEnabled, setProactiveEnabled] = useState(true);
+  const [clockPingEnabled, setClockPingEnabled] = useState(true);
   const [initiativeDailyCap, setInitiativeDailyCap] = useState(8);
   const [initiativeUsedToday, setInitiativeUsedToday] = useState(0);
   const [idleMinMinutes, setIdleMinMinutes] = useState(3);
   const [idleMaxMinutes, setIdleMaxMinutes] = useState(12);
   const [todayState, setTodayState] = useState("");
+  const [daySchedule, setDaySchedule] = useState("");
   const [continuityThreads, setContinuityThreads] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   /** 仅在贴近底部或刚发送时跟随滚底 */
   const stickToBottom = useRef(true);
   const lastSendAt = useRef(0);
+
+  useEffect(() => {
+    if (!showSettings) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowSettings(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showSettings]);
 
   async function refreshMe() {
     const res = await api<Me>("/api/me");
@@ -88,6 +101,7 @@ export function App() {
       setPersona(res.data.persona || "");
       setCharacterDossier(res.data.characterDossier || "");
       setProactiveEnabled(Boolean(res.data.proactiveEnabled));
+      setClockPingEnabled(res.data.clockPingEnabled !== false);
       setInitiativeDailyCap(
         typeof res.data.initiativeDailyCap === "number"
           ? res.data.initiativeDailyCap
@@ -109,6 +123,7 @@ export function App() {
           : 12,
       );
       setTodayState(res.data.todayState || "");
+      setDaySchedule(res.data.daySchedule || "");
       setContinuityThreads(res.data.continuityThreads || "");
     }
   }
@@ -231,6 +246,7 @@ export function App() {
         persona,
         characterDossier,
         proactiveEnabled,
+        clockPingEnabled,
         initiativeDailyCap,
         idleMinMinutes,
         idleMaxMinutes,
@@ -245,7 +261,11 @@ export function App() {
   }
 
   async function regenerateToday() {
-    const res = await api<{ ok: boolean; todayState?: string }>("/api/settings", {
+    const res = await api<{
+      ok: boolean;
+      todayState?: string;
+      daySchedule?: string;
+    }>("/api/settings", {
       method: "POST",
       body: JSON.stringify({ regenerateTodayState: true }),
     });
@@ -254,7 +274,8 @@ export function App() {
       return;
     }
     setTodayState(res.data.todayState || "");
-    setNotice("今日状态已重新生成");
+    setDaySchedule(res.data.daySchedule || "");
+    setNotice("今日状态与时刻表已重新生成");
     await refreshMe();
   }
 
@@ -358,133 +379,172 @@ export function App() {
       </div>
 
       {showSettings ? (
-        <div className="card settings">
-          <label>
-            AI 显示名
-            <input
-              type="text"
-              value={companionName}
-              onChange={(e) => setCompanionName(e.target.value)}
-            />
-          </label>
-          <label>
-            怎么称呼你
-            <input
-              type="text"
-              value={userNickname}
-              onChange={(e) => setUserNickname(e.target.value)}
-            />
-          </label>
-          <label>
-            说话方式 / 人设
-            <textarea
-              className="persona-input"
-              rows={8}
-              value={persona}
-              onChange={(e) => setPersona(e.target.value)}
-              placeholder="描述关系、语气、用词与禁忌…"
-            />
-          </label>
-          <label>
-            她是谁 / 小档案
-            <textarea
-              className="persona-input"
-              rows={6}
-              value={characterDossier}
-              onChange={(e) => setCharacterDossier(e.target.value)}
-              placeholder="作息、口味、习惯、脾气…"
-            />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={proactiveEnabled}
-              onChange={(e) => setProactiveEnabled(e.target.checked)}
-            />
-            允许主动找我（回后续话 / 安静后找你）
-          </label>
-          <label>
-            每日主动额度（续话+安静找你合计，0～50）
-            <input
-              type="number"
-              min={0}
-              max={50}
-              value={initiativeDailyCap}
-              onChange={(e) =>
-                setInitiativeDailyCap(Number(e.target.value) || 0)
-              }
-            />
-          </label>
-          <p className="notice" style={{ margin: 0 }}>
-            今日已用 {initiativeUsedToday} / {initiativeDailyCap}
-          </p>
-          <label>
-            安静后找你：最短（分钟，1～120）
-            <input
-              type="number"
-              min={1}
-              max={120}
-              value={idleMinMinutes}
-              onChange={(e) =>
-                setIdleMinMinutes(Number(e.target.value) || 1)
-              }
-            />
-          </label>
-          <label>
-            安静后找你：最长（分钟，1～120）
-            <input
-              type="number"
-              min={1}
-              max={120}
-              value={idleMaxMinutes}
-              onChange={(e) =>
-                setIdleMaxMinutes(Number(e.target.value) || 1)
-              }
-            />
-          </label>
-          <label>
-            今日状态（只读，聊天会偶尔引用）
-            <textarea
-              className="persona-input"
-              rows={3}
-              value={todayState || "（尚未生成，打开设置或聊一句后会出现）"}
-              readOnly
-            />
-          </label>
-          <label>
-            近期未完线（只读，可续上）
-            <textarea
-              className="persona-input"
-              rows={4}
-              value={
-                continuityThreads || "（聊一会儿后刷新，或等自动抽取）"
-              }
-              readOnly
-            />
-          </label>
-          <div className="settings-row">
-            <button className="primary" type="button" onClick={() => void saveSettings()}>
-              保存设置
-            </button>
-            <button className="ghost" type="button" onClick={() => void regenerateToday()}>
-              重新生成今日
-            </button>
-            <button className="ghost" type="button" onClick={() => void refreshContinuity()}>
-              刷新未完线
-            </button>
-            <button className="ghost" type="button" onClick={() => void resetInitiativeUsed()}>
-              清零今日已用
-            </button>
-            <button className="ghost" type="button" onClick={() => void clearMemory()}>
-              清空记忆
-            </button>
-            <button className="ghost" type="button" onClick={() => void clearChat()}>
-              清空对话
-            </button>
+        <div
+          className="settings-overlay"
+          role="presentation"
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="card settings settings-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="设置"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="settings-panel-head">
+              <strong>设置</strong>
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => setShowSettings(false)}
+              >
+                关闭
+              </button>
+            </div>
+            <label>
+              AI 显示名
+              <input
+                type="text"
+                value={companionName}
+                onChange={(e) => setCompanionName(e.target.value)}
+              />
+            </label>
+            <label>
+              怎么称呼你
+              <input
+                type="text"
+                value={userNickname}
+                onChange={(e) => setUserNickname(e.target.value)}
+              />
+            </label>
+            <label>
+              说话方式 / 人设
+              <textarea
+                className="persona-input"
+                rows={8}
+                value={persona}
+                onChange={(e) => setPersona(e.target.value)}
+                placeholder="描述关系、语气、用词与禁忌…"
+              />
+            </label>
+            <label>
+              她是谁 / 小档案
+              <textarea
+                className="persona-input"
+                rows={6}
+                value={characterDossier}
+                onChange={(e) => setCharacterDossier(e.target.value)}
+                placeholder="作息、口味、习惯、脾气…"
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={proactiveEnabled}
+                onChange={(e) => setProactiveEnabled(e.target.checked)}
+              />
+              允许主动找我（回后续话 / 安静后找你）
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={clockPingEnabled}
+                onChange={(e) => setClockPingEnabled(e.target.checked)}
+              />
+              允许事件到点找我（生活时钟）
+            </label>
+            <label>
+              每日主动额度（续话+安静找你+事件找你合计，0～50）
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={initiativeDailyCap}
+                onChange={(e) =>
+                  setInitiativeDailyCap(Number(e.target.value) || 0)
+                }
+              />
+            </label>
+            <p className="notice" style={{ margin: 0 }}>
+              今日已用 {initiativeUsedToday} / {initiativeDailyCap}
+            </p>
+            <label>
+              安静后找你：最短（分钟，1～120）
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={idleMinMinutes}
+                onChange={(e) =>
+                  setIdleMinMinutes(Number(e.target.value) || 1)
+                }
+              />
+            </label>
+            <label>
+              安静后找你：最长（分钟，1～120）
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={idleMaxMinutes}
+                onChange={(e) =>
+                  setIdleMaxMinutes(Number(e.target.value) || 1)
+                }
+              />
+            </label>
+            <label>
+              今日状态（只读，聊天会偶尔引用）
+              <textarea
+                className="persona-input"
+                rows={3}
+                value={todayState || "（尚未生成，打开设置或聊一句后会出现）"}
+                readOnly
+              />
+            </label>
+            <label>
+              今日时刻表（只读）
+              <textarea
+                className="persona-input"
+                rows={6}
+                value={daySchedule || "（尚未生成）"}
+                readOnly
+              />
+            </label>
+            <label>
+              近期未完线（只读，可续上）
+              <textarea
+                className="persona-input"
+                rows={4}
+                value={
+                  continuityThreads || "（聊一会儿后刷新，或等自动抽取）"
+                }
+                readOnly
+              />
+            </label>
+            <div className="settings-row">
+              <button className="primary" type="button" onClick={() => void saveSettings()}>
+                保存设置
+              </button>
+              <button className="ghost" type="button" onClick={() => void regenerateToday()}>
+                重新生成今日
+              </button>
+              <button className="ghost" type="button" onClick={() => void refreshContinuity()}>
+                刷新未完线
+              </button>
+              <button className="ghost" type="button" onClick={() => void resetInitiativeUsed()}>
+                清零今日已用
+              </button>
+              <button className="ghost" type="button" onClick={() => void clearMemory()}>
+                清空记忆
+              </button>
+              <button className="ghost" type="button" onClick={() => void clearChat()}>
+                清空对话
+              </button>
+            </div>
+            <p className="notice" style={{ margin: 0 }}>
+              聊天里发送「记住：xxx」可钉住记忆。点遮罩或 Esc 关闭。
+            </p>
           </div>
-          <p className="notice" style={{ margin: 0 }}>
-            聊天里发送「记住：xxx」可钉住记忆。
-          </p>
         </div>
       ) : null}
 

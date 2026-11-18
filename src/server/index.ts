@@ -24,12 +24,20 @@ import {
 } from "./db.js";
 import { DEFAULT_DOSSIER, DEFAULT_PERSONA } from "./persona.js";
 import {
+  ensureDaySchedule,
+  formatSchedule,
+  isClockPingEnabled,
+  readStoredSchedule,
+  setClockPingEnabled,
+} from "./clock.js";
+import {
   getIdleWindowMinutes,
   getInitiativeDailyCap,
   getInitiativeUsedToday,
   resetInitiativeUsedToday,
   setIdleWindowMinutes,
   setInitiativeDailyCap,
+  shanghaiYmd,
 } from "./followup.js";
 import { startProactiveLoop } from "./proactive.js";
 import {
@@ -65,9 +73,11 @@ app.get("/api/me", async (c) => {
   const ok = verifySessionToken(token);
   if (!ok) return c.json({ authenticated: false });
   await ensureTodayState();
+  await ensureDaySchedule();
   await ensureContinuityThreads();
   const today = readStoredTodayState();
   const continuity = readStoredContinuity();
+  const schedule = readStoredSchedule();
   return c.json({
     authenticated: true,
     companionName: getSetting("companion_name") || config.companionName,
@@ -75,11 +85,13 @@ app.get("/api/me", async (c) => {
     persona: currentPersona(),
     characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
+    clockPingEnabled: isClockPingEnabled(),
     initiativeDailyCap: getInitiativeDailyCap(),
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: getIdleWindowMinutes().min,
     idleMaxMinutes: getIdleWindowMinutes().max,
     todayState: today ? formatTodayState(today) : "",
+    daySchedule: schedule ? formatSchedule(schedule, shanghaiYmd()) : "",
     continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });
@@ -148,20 +160,24 @@ api.post("/messages/clear", (c) => {
 
 api.get("/settings", async (c) => {
   await ensureTodayState();
+  await ensureDaySchedule();
   await ensureContinuityThreads();
   const today = readStoredTodayState();
   const continuity = readStoredContinuity();
+  const schedule = readStoredSchedule();
   return c.json({
     companionName: getSetting("companion_name") || config.companionName,
     userNickname: getSetting("user_nickname") || config.userNickname,
     persona: currentPersona(),
     characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
+    clockPingEnabled: isClockPingEnabled(),
     initiativeDailyCap: getInitiativeDailyCap(),
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: getIdleWindowMinutes().min,
     idleMaxMinutes: getIdleWindowMinutes().max,
     todayState: today ? formatTodayState(today) : "",
+    daySchedule: schedule ? formatSchedule(schedule, shanghaiYmd()) : "",
     continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });
@@ -173,6 +189,7 @@ api.post("/settings", async (c) => {
     persona?: string;
     characterDossier?: string;
     proactiveEnabled?: boolean;
+    clockPingEnabled?: boolean;
     initiativeDailyCap?: number;
     idleMinMinutes?: number;
     idleMaxMinutes?: number;
@@ -198,6 +215,9 @@ api.post("/settings", async (c) => {
   if (typeof body.proactiveEnabled === "boolean") {
     setSetting("proactive_enabled", body.proactiveEnabled ? "1" : "0");
   }
+  if (typeof body.clockPingEnabled === "boolean") {
+    setClockPingEnabled(body.clockPingEnabled);
+  }
   if (typeof body.initiativeDailyCap === "number") {
     setInitiativeDailyCap(body.initiativeDailyCap);
   }
@@ -220,8 +240,10 @@ api.post("/settings", async (c) => {
   }
   if (body.regenerateTodayState === true) {
     await ensureTodayState(true);
+    await ensureDaySchedule(true);
   } else {
     await ensureTodayState();
+    await ensureDaySchedule();
   }
   if (body.refreshContinuityThreads === true) {
     await ensureContinuityThreads(true);
@@ -230,14 +252,17 @@ api.post("/settings", async (c) => {
   }
   const today = readStoredTodayState();
   const continuity = readStoredContinuity();
+  const schedule = readStoredSchedule();
   const idle = getIdleWindowMinutes();
   return c.json({
     ok: true,
+    clockPingEnabled: isClockPingEnabled(),
     initiativeDailyCap: getInitiativeDailyCap(),
     initiativeUsedToday: getInitiativeUsedToday(),
     idleMinMinutes: idle.min,
     idleMaxMinutes: idle.max,
     todayState: today ? formatTodayState(today) : "",
+    daySchedule: schedule ? formatSchedule(schedule, shanghaiYmd()) : "",
     continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });

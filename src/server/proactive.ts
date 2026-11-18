@@ -15,6 +15,7 @@ import {
   shanghaiYmd,
   tickIdlePing,
 } from "./followup.js";
+import { ensureDaySchedule, tickClockEvents } from "./clock.js";
 import { ensureContinuityThreads } from "./continuity.js";
 import {
   canAttemptInitiative,
@@ -84,7 +85,9 @@ async function tickDailyGreeting() {
 
 export async function tickProactive() {
   await ensureTodayState();
+  await ensureDaySchedule();
   await ensureContinuityThreads();
+  await tickClockEvents();
   await tickIdlePing();
   await tickDailyGreeting();
 }
