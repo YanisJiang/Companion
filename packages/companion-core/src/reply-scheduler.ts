@@ -8,7 +8,7 @@ import {
   getTraits,
   loadCompanionState,
 } from "./companion-runtime.js";
-import { decideReply } from "./decide.js";
+import { buildReplyIntentHint, decideReply } from "./decide.js";
 import {
   cancelPendingFollowup,
   scheduleFollowupAfterReply,
@@ -132,12 +132,14 @@ async function generateAndInsertReply(genAtStart: number): Promise<void> {
   await ensureTodayState();
   await ensureContinuityThreads();
   ensureCompanionStateTicked();
-  const replyIntent = decideReply(loadCompanionState(), getTraits());
-  const brief = formatStateBrief(loadCompanionState());
-  const replyHint =
-    replyIntent === "reply_soft"
-      ? `\n本轮回复意图=短回（内在：${brief}）：更短、更收着；优先 1 条，不要拆多泡生活碎念。`
-      : `\n本轮回复意图=正常（内在：${brief}）：按人设自然回即可。`;
+  const state = loadCompanionState();
+  const replyIntent = decideReply(state, getTraits());
+  const brief = formatStateBrief(state);
+  const replyHint = buildReplyIntentHint(
+    replyIntent,
+    brief,
+    state.crisisResidue,
+  );
 
   const history = recentMessages(config.recentTurns * 2);
   const messages: ChatMessage[] = [

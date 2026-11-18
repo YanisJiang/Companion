@@ -4,7 +4,7 @@ import {
   insertMessage,
   setSetting,
 } from "./deps.js";
-import { isInHeavyCooldown } from "./crisis.js";
+import { getHeavyUntil, isInHeavyCooldown } from "./crisis.js";
 import {
   applyInitiativeSentToCompanionState,
   ensureCompanionStateTicked,
@@ -156,6 +156,37 @@ export function bumpIdleDue(): void {
   setSetting("idle_due_at", String(Date.now() + mins * 60_000));
 }
 
+/**
+ * 冷静窗结束后再挂安静找你：due = max(now, heavy_until) + 安静窗抖动。
+ * 避免危机期 clear 后解封永久无到期点。
+ */
+export function idleDueMsAfterHeavy(
+  heavyUntil: number,
+  now: number,
+  idleMins: number,
+): number {
+  const mins = Number.isFinite(idleMins) && idleMins > 0 ? idleMins : 1;
+  return Math.max(now, heavyUntil) + mins * 60_000;
+}
+
+export function scheduleIdleAfterHeavyCooldown(now = Date.now()): number {
+  const { min, max } = getIdleWindowMinutes();
+  const mins = min + Math.random() * (max - min);
+  const due = idleDueMsAfterHeavy(getHeavyUntil(), now, mins);
+  setSetting("idle_due_at", String(due));
+  console.log("[idle] schedule after heavy", { due, heavyUntil: getHeavyUntil() });
+  return due;
+}
+
+/** 残留期抽到 silence：短间隔再试（仍走 decide，可出 heavy_hold）。 */
+export function bumpIdleDueAfterCrisisSilence(now = Date.now()): number {
+  const mins = 8 + Math.random() * 12;
+  const due = now + mins * 60_000;
+  setSetting("idle_due_at", String(due));
+  console.log("[idle] retry after crisis silence", { due, mins: Math.round(mins) });
+  return due;
+}
+
 export function clearIdleDue(): void {
   setSetting("idle_due_at", "");
 }
@@ -267,8 +298,8 @@ export async function tickIdlePing(): Promise<void> {
     return;
   }
   if (isInHeavyCooldown()) {
-    console.log("[idle] skip: heavy cooldown");
-    clearIdleDue();
+    console.log("[idle] skip: heavy cooldown → reschedule");
+    scheduleIdleAfterHeavyCooldown();
     return;
   }
   if (!canSendInitiative()) {
@@ -284,7 +315,13 @@ export async function tickIdlePing(): Promise<void> {
   ensureCompanionStateTicked();
   const intent = decideInitiativeIntent();
   console.log("[idle] intent", intent);
-  if (intent === "silence") return;
+  if (intent === "silence") {
+    const residue = loadCompanionState().crisisResidue;
+    if (residue >= 0.45 && canAttemptInitiative()) {
+      bumpIdleDueAfterCrisisSilence();
+    }
+    return;
+  }
 
   try {
     const text = (await generateInitiativeText(intent)).trim();

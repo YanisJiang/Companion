@@ -2,6 +2,7 @@ import "./bootstrap.js";
 
 export {
   bumpIdleDue,
+  bumpIdleDueAfterCrisisSilence,
   bumpIdleDueAfterUnanswered,
   canSendInitiative,
   cancelPendingFollowup,
@@ -10,10 +11,12 @@ export {
   getIdleWindowMinutes,
   getInitiativeDailyCap,
   getInitiativeUsedToday,
+  idleDueMsAfterHeavy,
   normalizeIdleWindow,
   recordInitiative,
   resetInitiativeUsedToday,
   scheduleFollowupAfterReply,
+  scheduleIdleAfterHeavyCooldown,
   setIdleWindowMinutes,
   setInitiativeDailyCap,
   shanghaiYmd,

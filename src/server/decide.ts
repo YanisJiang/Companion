@@ -1,4 +1,5 @@
 export {
+  buildReplyIntentHint,
   decideInitiative,
   decideReply,
   initiativeIntentToTone,

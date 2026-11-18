@@ -48,6 +48,7 @@ export {
 
 export {
   decideInitiative,
+  buildReplyIntentHint,
   decideReply,
   initiativeIntentToTone,
   type DecideInitiativeOpts,
@@ -127,6 +128,7 @@ export {
 
 export {
   bumpIdleDue,
+  bumpIdleDueAfterCrisisSilence,
   bumpIdleDueAfterUnanswered,
   canSendInitiative,
   cancelPendingFollowup,
@@ -135,10 +137,12 @@ export {
   getIdleWindowMinutes,
   getInitiativeDailyCap,
   getInitiativeUsedToday,
+  idleDueMsAfterHeavy,
   normalizeIdleWindow,
   recordInitiative,
   resetInitiativeUsedToday,
   scheduleFollowupAfterReply,
+  scheduleIdleAfterHeavyCooldown,
   setIdleWindowMinutes,
   setInitiativeDailyCap,
   shanghaiYmd,

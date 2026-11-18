@@ -45,7 +45,7 @@ export function bumpHeavyCooldown(now = Date.now()): number {
 
 /**
  * 用户新消息：命中则拉冷静窗。
- * onArmed：用于取消待发续话/清空 idle。
+ * onArmed：取消待发续话，并改挂「解封后 idle」（勿永久清空）。
  */
 export function noteUserTextForCrisis(
   text: string,

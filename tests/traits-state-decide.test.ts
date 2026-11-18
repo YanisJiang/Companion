@@ -10,10 +10,12 @@ import {
   type CompanionState,
 } from "../src/server/companion-state.ts";
 import {
+  buildReplyIntentHint,
   decideInitiative,
   decideReply,
   initiativeIntentToTone,
 } from "../src/server/decide.ts";
+import { idleDueMsAfterHeavy } from "../src/server/followup.ts";
 import {
   DEFAULT_TRAITS,
   normalizeTraits,
@@ -80,6 +82,25 @@ describe("decideInitiative", () => {
     }
   });
 
+  it("危机残留偏高 → 更易 heavy_hold（仍无 life）", () => {
+    const s = state({
+      crisisResidue: 0.65,
+      socialDrive: 0.9,
+      energy: 0.9,
+      mood: 0.7,
+    });
+    let holds = 0;
+    for (let i = 0; i < 40; i++) {
+      const intent = decideInitiative(s, DEFAULT_TRAITS, {
+        rand: () => (i + 0.5) / 40,
+      });
+      assert.notEqual(intent, "life");
+      if (intent === "heavy_hold") holds++;
+    }
+    // cling≈0.7 → 阈值约 0.725，应明显过半
+    assert.ok(holds >= 20, `heavy_hold count=${holds}`);
+  });
+
   it("同状态高 chatter 更易 life", () => {
     const s = state({
       crisisResidue: 0,
@@ -125,6 +146,30 @@ describe("decideReply", () => {
   it("精力好且无危机 → reply_normal", () => {
     const s = state({ energy: 0.85, mood: 0.7, crisisResidue: 0 });
     assert.equal(decideReply(s, { ...DEFAULT_TRAITS, reserve: 0.3 }), "reply_normal");
+  });
+
+  it("危机残留高 → reply_soft 且 hint 禁日常碎念", () => {
+    const s = state({ energy: 0.85, mood: 0.7, crisisResidue: 0.7 });
+    assert.equal(decideReply(s, DEFAULT_TRAITS), "reply_soft");
+    const hint = buildReplyIntentHint("reply_soft", "简报", 0.7);
+    assert.match(hint, /禁止日常碎念/);
+    assert.match(hint, /沉重陪伴/);
+  });
+});
+
+describe("idleDueMsAfterHeavy", () => {
+  it("到期点不早于 heavy_until", () => {
+    const now = 1_000_000;
+    const heavyUntil = now + 45 * 60_000;
+    const due = idleDueMsAfterHeavy(heavyUntil, now, 5);
+    assert.equal(due, heavyUntil + 5 * 60_000);
+  });
+
+  it("冷静已过则以 now 为基", () => {
+    const now = 2_000_000;
+    const heavyUntil = now - 60_000;
+    const due = idleDueMsAfterHeavy(heavyUntil, now, 3);
+    assert.equal(due, now + 3 * 60_000);
   });
 });
 

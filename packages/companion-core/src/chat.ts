@@ -13,7 +13,7 @@ import { applyUserMessageToCompanionState } from "./companion-runtime.js";
 import {
   bumpIdleDue,
   cancelPendingFollowup,
-  clearIdleDue,
+  scheduleIdleAfterHeavyCooldown,
 } from "./followup.js";
 import { chatCompletion, type ChatMessage } from "./deps.js";
 import {
@@ -67,15 +67,16 @@ export async function handleUserMessage(raw: string): Promise<ChatResult> {
   insertMessage("user", text);
   noteUserTextForCrisis(text, () => {
     cancelPendingFollowup();
-    clearIdleDue();
+    // 解封后再找你，不把 idle 清成永久空
+    scheduleIdleAfterHeavyCooldown();
   });
   applyUserMessageToCompanionState({
     heavy: isHeavyMoodText(text),
     softHeavy: isSoftHeavyText(text),
   });
-  // 冷静窗内不排日常安静找你，避免到点再被跳过
+  // 冷静窗内挂到解封后；窗外照常重设安静窗
   if (!isInHeavyCooldown()) bumpIdleDue();
-  else clearIdleDue();
+  else scheduleIdleAfterHeavyCooldown();
   scheduleReplyAfterUserMessage(text.length);
 
   return {
