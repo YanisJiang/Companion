@@ -3,4 +3,4 @@ export {
   DEFAULT_TRAITS,
   normalizeTraits,
   type PersonalityTraits,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

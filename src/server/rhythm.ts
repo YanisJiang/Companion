@@ -10,4 +10,4 @@ export {
   quietDelayMs,
   shouldReplyImmediately,
   splitBubbles,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

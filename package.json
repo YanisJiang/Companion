@@ -8,16 +8,16 @@
   ],
   "scripts": {
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "npm run build -w @companion/core && tsx watch src/server/index.ts",
+    "dev:server": "npm run build -w @yanisjiang/companion-core && tsx watch src/server/index.ts",
     "dev:web": "vite",
-    "build": "npm run build -w @companion/core && vite build && tsc -p tsconfig.server.json",
-    "build:core": "npm run build -w @companion/core",
+    "build": "npm run build -w @yanisjiang/companion-core && vite build && tsc -p tsconfig.server.json",
+    "build:core": "npm run build -w @yanisjiang/companion-core",
     "start": "node dist/server/index.js",
-    "typecheck": "npm run build -w @companion/core && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test": "npm run build -w @companion/core && tsx --test tests/**/*.test.ts"
+    "typecheck": "npm run build -w @yanisjiang/companion-core && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test": "npm run build -w @yanisjiang/companion-core && tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
-    "@companion/core": "*",
+    "@yanisjiang/companion-core": "*",
     "@hono/node-server": "^1.14.1",
     "better-sqlite3": "^11.9.1",
     "hono": "^4.7.8",

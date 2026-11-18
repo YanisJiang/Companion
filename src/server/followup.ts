@@ -21,4 +21,4 @@ export {
   setInitiativeDailyCap,
   shanghaiYmd,
   tickIdlePing,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

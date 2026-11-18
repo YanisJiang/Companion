@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import {
   createCompanion,
   createOpenAiCompatibleLlm,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";
 
 const apiKey = process.env.DEEPSEEK_API_KEY || process.env.API_KEY || "";
 if (!apiKey) {

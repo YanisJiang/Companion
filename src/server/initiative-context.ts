@@ -15,4 +15,4 @@ export {
   shanghaiYmdLocal,
   UNANSWERED_STREAK_CAP,
   type InitiativeTone,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

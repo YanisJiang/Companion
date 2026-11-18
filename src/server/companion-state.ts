@@ -9,4 +9,4 @@ export {
   STATE_SETTINGS_KEY,
   tickState,
   type CompanionState,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

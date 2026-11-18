@@ -7,4 +7,4 @@ export {
   parseTodayStateJson,
   readStoredTodayState,
   type TodayState,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

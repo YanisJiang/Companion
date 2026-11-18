@@ -12,4 +12,4 @@ export {
   type CharacterDynamics,
   type CharacterParams,
   type StateInitial,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

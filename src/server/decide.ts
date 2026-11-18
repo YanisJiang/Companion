@@ -7,4 +7,4 @@ export {
   type InitiativeIntent,
   type Intent,
   type ReplyIntent,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

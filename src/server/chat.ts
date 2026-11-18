@@ -4,4 +4,4 @@ export {
   generateProactiveMessage,
   handleUserMessage,
   type ChatResult,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

@@ -6,7 +6,7 @@ import {
   createMemoryMessageStore,
   type LlmClient,
   type ListenHandle,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";
 
 describe("listen 自行启动", () => {
   let handle: ListenHandle | null = null;

@@ -7,4 +7,4 @@ export {
   isInHeavyCooldown,
   noteUserTextForCrisis,
   textsHaveHeavyMood,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

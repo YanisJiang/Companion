@@ -3,7 +3,7 @@ import {
   createCompanion,
   createOpenAiCompatibleLlm,
   type MessageStore,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";
 import { config } from "./config.js";
 import {
   addPin,

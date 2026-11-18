@@ -1,4 +1,4 @@
-/** @companion/core — 陪伴决策与人设内核（LLM / 配置 / 存储可插拔） */
+/** @yanisjiang/companion-core — 陪伴决策与人设内核（LLM / 配置 / 存储可插拔） */
 
 export type {
   ChatCompletionOpts,

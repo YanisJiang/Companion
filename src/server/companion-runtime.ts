@@ -9,4 +9,4 @@ export {
   getTraits,
   loadCompanionState,
   saveCompanionState,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

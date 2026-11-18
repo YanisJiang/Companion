@@ -12,4 +12,4 @@ export {
   shanghaiParts,
   tickClockEvents,
   type ScheduleEvent,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

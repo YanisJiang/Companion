@@ -1,4 +1,4 @@
-import { createOpenAiCompatibleLlm, type ChatMessage } from "@companion/core";
+import { createOpenAiCompatibleLlm, type ChatMessage } from "@yanisjiang/companion-core";
 import { config } from "./config.js";
 
 export type { ChatMessage };

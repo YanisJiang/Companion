@@ -1,7 +1,8 @@
 {
-  "name": "@companion/core",
+  "name": "@yanisjiang/companion-core",
   "version": "0.1.0",
-  "private": true,
+  "description": "State-driven AI companion runtime: traits, mood state, decide intents, pluggable LLM and storage.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,11 +14,38 @@
   },
   "files": [
     "dist",
-    "examples"
+    "examples",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YanisJiang/Companion.git",
+    "directory": "packages/companion-core"
+  },
+  "homepage": "https://github.com/YanisJiang/Companion/tree/master/packages/companion-core",
+  "bugs": {
+    "url": "https://github.com/YanisJiang/Companion/issues"
+  },
+  "author": "YanisJiang",
+  "keywords": [
+    "companion",
+    "llm",
+    "chat",
+    "persona",
+    "agent",
+    "openai-compatible"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependencies": {
     "better-sqlite3": "^11.0.0"

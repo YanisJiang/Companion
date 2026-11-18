@@ -1,6 +1,6 @@
 # minimal — 10 分钟自行启动
 
-1. 在仓库根目录安装依赖（已含 `@companion/core` workspace）。
+1. 在仓库根目录安装依赖（已含 `@yanisjiang/companion-core` workspace）。
 2. 设置 API Key：
 
 ```bash

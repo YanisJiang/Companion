@@ -7,4 +7,4 @@ export {
   resetReplyScheduler,
   scheduleReplyAfterUserMessage,
   splitBubbles,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";

@@ -7,7 +7,7 @@ import {
   isHeavyMoodText,
   type ChatMessage,
   type LlmClient,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";
 import { resolve } from "node:path";
 
 function stubLlm(reply = "嗯"): LlmClient {

@@ -1,3 +1,3 @@
 import "./bootstrap.js";
 
-export { buildSystemPrompt } from "@companion/core";
+export { buildSystemPrompt } from "@yanisjiang/companion-core";

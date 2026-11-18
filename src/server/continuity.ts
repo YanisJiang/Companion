@@ -7,4 +7,4 @@ export {
   parseContinuityJson,
   readStoredContinuity,
   type ContinuityState,
-} from "@companion/core";
+} from "@yanisjiang/companion-core";
