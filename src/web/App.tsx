@@ -70,6 +70,9 @@ export function App() {
   const [todayState, setTodayState] = useState("");
   const [continuityThreads, setContinuityThreads] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  /** 仅在贴近底部或刚发送时跟随滚底 */
+  const stickToBottom = useRef(true);
   const lastSendAt = useRef(0);
 
   async function refreshMe() {
@@ -139,9 +142,20 @@ export function App() {
     return () => clearInterval(t);
   }, [me?.authenticated]);
 
+  function isNearBottom(el: HTMLDivElement, px = 80): boolean {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= px;
+  }
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, showTypingHint]);
+    // 设置打开时绝不自动滚，避免整页被拽走、关不掉设置
+    if (showSettings) return;
+    const box = messagesRef.current;
+    if (!box) return;
+    if (!stickToBottom.current && !isNearBottom(box)) return;
+    stickToBottom.current = true;
+    // 只滚消息容器，不用 scrollIntoView（会带动页面滚走顶栏/设置）
+    box.scrollTop = box.scrollHeight;
+  }, [messages, showTypingHint, showSettings]);
 
   async function onLogin(e: FormEvent) {
     e.preventDefault();
@@ -171,6 +185,7 @@ export function App() {
     setDraft("");
     setSending(true);
     setNotice("");
+    stickToBottom.current = true;
     lastSendAt.current = Date.now();
     const optimistic: Message = {
       id: Date.now(),
@@ -475,7 +490,15 @@ export function App() {
 
       {notice ? <p className="notice">{notice}</p> : null}
 
-      <div className="messages">
+      <div
+        className="messages"
+        ref={messagesRef}
+        onScroll={() => {
+          const box = messagesRef.current;
+          if (!box) return;
+          stickToBottom.current = isNearBottom(box);
+        }}
+      >
         {messages
           .filter((m) => m.role === "user" || m.role === "assistant")
           .map((m, index, list) => {
