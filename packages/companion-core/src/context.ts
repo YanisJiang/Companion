@@ -5,7 +5,11 @@ import type { MessageStore } from "./ports/store.js";
 
 export type CompanionOptions = {
   llm: LlmClient;
-  store: MessageStore;
+  /**
+   * 消息/记忆/settings 存储。
+   * 省略时默认内存 `createMemoryMessageStore()`（进程内；要落盘用 createSqliteMessageStore）。
+   */
+  store?: MessageStore;
   /** 默认 cwd/config/character */
   configDir?: string;
   companionName?: string;
@@ -29,7 +33,7 @@ export type ResolvedCompanionOptions = Required<
     | "proactiveHourEnd"
   >
 > &
-  CompanionOptions;
+  Omit<CompanionOptions, "store"> & { store: MessageStore };
 
 let runtime: {
   llm: LlmClient;
@@ -49,8 +53,13 @@ export function isCompanionReady(): boolean {
 }
 
 export function initCompanionRuntime(opts: CompanionOptions): ResolvedCompanionOptions {
+  if (!opts.store) {
+    throw new Error("initCompanionRuntime 需要 store；请用 createCompanion（可省略 store）");
+  }
+  const store = opts.store;
   const options: ResolvedCompanionOptions = {
     ...opts,
+    store,
     companionName: opts.companionName ?? "阿深",
     userNickname: opts.userNickname ?? "你",
     recentTurns: opts.recentTurns ?? 20,
@@ -59,7 +68,7 @@ export function initCompanionRuntime(opts: CompanionOptions): ResolvedCompanionO
     proactiveHourEnd: opts.proactiveHourEnd ?? 22,
   };
   if (opts.configDir) setCharacterConfigDir(opts.configDir);
-  bindCrisisStore(opts.store);
-  runtime = { llm: opts.llm, store: opts.store, options };
+  bindCrisisStore(store);
+  runtime = { llm: opts.llm, store, options };
   return options;
 }

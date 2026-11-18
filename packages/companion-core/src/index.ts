@@ -12,10 +12,19 @@ export type { MemoryRow, MessageRow, MessageStore } from "./ports/store.js";
 export { createOpenAiCompatibleLlm } from "./adapters/openai-compatible.js";
 export type { OpenAiCompatibleLlmOptions } from "./adapters/openai-compatible.js";
 export { createMemoryMessageStore } from "./adapters/memory-store.js";
+export {
+  createSqliteMessageStore,
+  type SqliteMessageStoreOptions,
+} from "./adapters/sqlite-store.js";
 
 export type { CompanionOptions, ResolvedCompanionOptions } from "./context.js";
 export { isCompanionReady } from "./context.js";
 export { createCompanion, type CompanionApi } from "./create-companion.js";
+export {
+  listenCompanion,
+  type ListenHandle,
+  type ListenOptions,
+} from "./listen.js";
 
 export {
   clamp01,
