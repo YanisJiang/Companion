@@ -3,16 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "tsx watch src/server/index.ts",
+    "dev:server": "npm run build -w @companion/core && tsx watch src/server/index.ts",
     "dev:web": "vite",
-    "build": "vite build && tsc -p tsconfig.server.json",
+    "build": "npm run build -w @companion/core && vite build && tsc -p tsconfig.server.json",
+    "build:core": "npm run build -w @companion/core",
     "start": "node dist/server/index.js",
-    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "typecheck": "npm run build -w @companion/core && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test": "npm run build -w @companion/core && tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
+    "@companion/core": "*",
     "@hono/node-server": "^1.14.1",
     "better-sqlite3": "^11.9.1",
     "hono": "^4.7.8",

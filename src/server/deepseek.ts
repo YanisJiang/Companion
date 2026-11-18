@@ -1,42 +1,17 @@
+import { createOpenAiCompatibleLlm, type ChatMessage } from "@companion/core";
 import { config } from "./config.js";
 
-export type ChatMessage = {
-  role: "system" | "user" | "assistant";
-  content: string;
-};
+export type { ChatMessage };
+
+const llm = createOpenAiCompatibleLlm({
+  apiKey: config.deepseekApiKey,
+  baseUrl: config.deepseekBaseUrl,
+  model: config.deepseekModel,
+});
 
 export async function chatCompletion(
   messages: ChatMessage[],
   opts?: { temperature?: number; maxTokens?: number },
 ): Promise<string> {
-  if (!config.deepseekApiKey) {
-    throw new Error("未配置 DEEPSEEK_API_KEY");
-  }
-
-  const url = `${config.deepseekBaseUrl.replace(/\/$/, "")}/v1/chat/completions`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.deepseekApiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.deepseekModel,
-      messages,
-      temperature: opts?.temperature ?? 0.9,
-      ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`DeepSeek 请求失败 ${res.status}: ${text.slice(0, 300)}`);
-  }
-
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error("DeepSeek 返回空内容");
-  return content;
+  return llm.chatCompletion(messages, opts);
 }

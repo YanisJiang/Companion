@@ -1,0 +1,24 @@
+{
+  "version": "10",
+  "traits": {
+    "cling": 0.7,
+    "chatter": 0.65,
+    "heavySensitivity": 0.8,
+    "reserve": 0.55,
+    "chronotype": 0.75
+  },
+  "stateInitial": {
+    "energy": 0.7,
+    "mood": 0.65,
+    "socialDrive": 0.35,
+    "crisisResidue": 0
+  },
+  "dynamics": {
+    "socialRiseBasePerHour": 0.08,
+    "socialRiseClingScale": 0.14,
+    "crisisHalfLifeBaseHours": 0.5,
+    "crisisHalfLifeSensScale": 1.5,
+    "initiativeSocialCost": 0.35,
+    "replyEnergyCost": 0.05
+  }
+}
