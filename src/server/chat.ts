@@ -11,6 +11,7 @@ import {
   clearIdleDue,
 } from "./followup.js";
 import { chatCompletion, type ChatMessage } from "./deepseek.js";
+import { clearUnansweredInitiativeStreak } from "./initiative-context.js";
 import { buildSystemPrompt } from "./prompt.js";
 import {
   resetReplyScheduler,
@@ -36,6 +37,8 @@ export async function handleUserMessage(raw: string): Promise<ChatResult> {
   if (!text) throw new Error("消息不能为空");
 
   cancelPendingFollowup();
+  // 你开口后，连续未回计数清零
+  clearUnansweredInitiativeStreak();
 
   const pin = detectPin(text);
   if (pin) {

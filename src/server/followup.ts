@@ -5,6 +5,12 @@ import {
   setSetting,
 } from "./db.js";
 import { isInHeavyCooldown } from "./crisis.js";
+import {
+  canAttemptInitiative,
+  decideInitiativeTone,
+  noteUnansweredInitiative,
+  type InitiativeTone,
+} from "./initiative-context.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { ensureTodayState } from "./today.js";
 
@@ -100,6 +106,7 @@ export function resetInitiativeUsedToday(): void {
 }
 
 export function canSendInitiative(): boolean {
+  if (!canAttemptInitiative()) return false;
   const cap = getInitiativeDailyCap();
   if (cap <= 0) return false;
   return initiativeState().count < cap;
@@ -113,6 +120,24 @@ export function recordInitiative(): boolean {
   setSetting("initiative_ymd", ymd);
   setSetting("initiative_count", String(count + 1));
   return true;
+}
+
+/** 主动后你未回：下一次安静找你拉到 40～90 分钟。 */
+export function bumpIdleDueAfterUnanswered(): void {
+  const mins = 40 + Math.random() * 50;
+  setSetting("idle_due_at", String(Date.now() + mins * 60_000));
+}
+
+function commitInitiativeMessage(text: string): void {
+  insertMessage("assistant", text, true);
+  recordInitiative();
+  const streak = noteUnansweredInitiative();
+  if (streak >= 2) {
+    // 连续未回已满：当天歇着，清掉到期点，避免分钟轮询空转
+    clearIdleDue();
+  } else {
+    bumpIdleDueAfterUnanswered();
+  }
 }
 
 /** 用户刚发过消息：重设「安静后找你」的到期时间。 */
@@ -136,6 +161,10 @@ export function cancelPendingFollowup(): void {
 
 export function scheduleFollowupAfterReply(): void {
   if (getSetting("proactive_enabled") !== "1") return;
+  if (!canAttemptInitiative()) {
+    console.log("[followup] skip: unanswered streak cap");
+    return;
+  }
   if (isInHeavyCooldown()) {
     console.log("[followup] skip: heavy cooldown");
     return;
@@ -159,44 +188,54 @@ export function scheduleFollowupAfterReply(): void {
   }, delay);
 }
 
+export async function generateInitiativeText(tone: InitiativeTone): Promise<string> {
+  if (tone === "silence") return "";
+  await ensureTodayState();
+  if (tone === "presence") {
+    return chatCompletion([
+      { role: "system", content: buildSystemPrompt() },
+      {
+        role: "user",
+        content:
+          "（系统）用户刚经历过难受或沉重话题。请主动发一句极短的在场：只表示你还在、陪着，不要提问，不要建议清单，不要提咖啡/听歌/今日小事/发呆等日常碎碎念。只输出一句正文。",
+      },
+    ]);
+  }
+  return chatCompletion([
+    { role: "system", content: buildSystemPrompt() },
+    {
+      role: "user",
+      content:
+        "（系统）补发一条很短的主动消息：像微信里过一会儿又冒出来的那句。可轻轻带「你今天的状态」里的小事，或当下碎碎念；不要空关心、不要提问收尾、不要列表。只输出一句正文。",
+    },
+  ]);
+}
+
 async function runFollowup(gen: number): Promise<void> {
   if (gen !== followupGen) return;
   if (getSetting("proactive_enabled") !== "1") return;
+  if (!canAttemptInitiative()) {
+    console.log("[followup] skip run: unanswered streak cap");
+    return;
+  }
   if (isInHeavyCooldown()) {
     console.log("[followup] skip run: heavy cooldown");
     return;
   }
   if (!canSendInitiative()) return;
 
+  const tone = decideInitiativeTone();
+  console.log("[followup] tone", tone);
+  if (tone === "silence") return;
+
   try {
-    await ensureTodayState();
-    const text = await chatCompletion([
-      { role: "system", content: buildSystemPrompt() },
-      {
-        role: "user",
-        content:
-          "（系统）你刚才已经回过用户了。现在补发一条很短的续话：像微信里过一会儿又冒出来的那句。优先轻轻带一句「你今天的状态」里的小事或心情，也可以是当下碎碎念；不要空关心、不要复述刚才已经说过的话、不要提问收尾、不要列表、不要讲道理。只输出这一句正文。",
-      },
-    ]);
-    const cleaned = text.trim();
+    const cleaned = (await generateInitiativeText(tone)).trim();
     if (!cleaned) return;
-    insertMessage("assistant", cleaned, true);
-    recordInitiative();
-    console.log("[followup] 已发送续话");
+    commitInitiativeMessage(cleaned);
+    console.log("[followup] 已发送续话", { tone });
   } catch (err) {
     console.error("[followup] 失败", err);
   }
-}
-
-export async function generateIdlePing(): Promise<string> {
-  return chatCompletion([
-    { role: "system", content: buildSystemPrompt() },
-    {
-      role: "user",
-      content:
-        "（系统）你们刚聊过，用户安静了一会儿。请主动发一句很短的消息：优先轻轻带一句「你今天的状态」里的小事或心情，也可以是惦记或接一下刚才的氛围。不要提问收尾；不要列表；不要讲道理；不要长篇。只输出一句正文。",
-    },
-  ]);
 }
 
 export async function tickIdlePing(): Promise<void> {
@@ -205,6 +244,11 @@ export async function tickIdlePing(): Promise<void> {
   if (!dueRaw) return;
   const due = Number(dueRaw);
   if (!Number.isFinite(due) || Date.now() < due) return;
+  if (!canAttemptInitiative()) {
+    console.log("[idle] skip: unanswered streak cap");
+    clearIdleDue();
+    return;
+  }
   if (isInHeavyCooldown()) {
     console.log("[idle] skip: heavy cooldown");
     clearIdleDue();
@@ -219,13 +263,16 @@ export async function tickIdlePing(): Promise<void> {
     return;
   }
   clearIdleDue();
+
+  const tone = decideInitiativeTone();
+  console.log("[idle] tone", tone);
+  if (tone === "silence") return;
+
   try {
-    await ensureTodayState();
-    const text = (await generateIdlePing()).trim();
+    const text = (await generateInitiativeText(tone)).trim();
     if (!text) return;
-    insertMessage("assistant", text, true);
-    recordInitiative();
-    console.log("[idle] 已发送安静后主动消息");
+    commitInitiativeMessage(text);
+    console.log("[idle] 已发送安静后主动消息", { tone });
   } catch (err) {
     console.error("[idle] 失败", err);
   }

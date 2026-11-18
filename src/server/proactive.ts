@@ -1,5 +1,4 @@
 import { config } from "./config.js";
-import { generateProactiveMessage } from "./chat.js";
 import {
   getSetting,
   hasProactiveOnLocalDate,
@@ -7,8 +6,21 @@ import {
   insertMessage,
   setSetting,
 } from "./db.js";
-import { shanghaiYmd, tickIdlePing } from "./followup.js";
+import {
+  bumpIdleDueAfterUnanswered,
+  canSendInitiative,
+  clearIdleDue,
+  generateInitiativeText,
+  recordInitiative,
+  shanghaiYmd,
+  tickIdlePing,
+} from "./followup.js";
 import { ensureContinuityThreads } from "./continuity.js";
+import {
+  canAttemptInitiative,
+  decideInitiativeTone,
+  noteUnansweredInitiative,
+} from "./initiative-context.js";
 import { ensureTodayState } from "./today.js";
 
 function localHour(d = new Date()): number {
@@ -23,6 +35,11 @@ function localHour(d = new Date()): number {
 async function tickDailyGreeting() {
   const enabled = getSetting("proactive_enabled") === "1";
   if (!enabled) return;
+  if (!canAttemptInitiative()) {
+    console.log("[proactive] skip: unanswered streak cap");
+    return;
+  }
+  if (!canSendInitiative()) return;
 
   const hour = localHour();
   const start = config.proactiveHourStart;
@@ -44,11 +61,22 @@ async function tickDailyGreeting() {
   }
   if (hasUserMessageOnLocalDate(today)) return;
 
+  const tone = decideInitiativeTone();
+  if (tone === "silence") {
+    console.log("[proactive] skip: tone silence");
+    return;
+  }
+
   try {
-    const text = await generateProactiveMessage();
+    const text = (await generateInitiativeText(tone)).trim();
+    if (!text) return;
     insertMessage("assistant", text, true);
+    recordInitiative();
+    const streak = noteUnansweredInitiative(today);
+    if (streak >= 2) clearIdleDue();
+    else bumpIdleDueAfterUnanswered();
     setSetting("last_proactive_date", today);
-    console.log("[proactive] 已发送主动消息");
+    console.log("[proactive] 已发送主动消息", { tone, streak });
   } catch (err) {
     console.error("[proactive] 失败", err);
   }
