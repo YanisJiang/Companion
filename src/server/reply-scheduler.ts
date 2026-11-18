@@ -13,6 +13,8 @@ import {
   quietDelayMs,
   splitBubbles as splitBubblesPure,
 } from "./rhythm.js";
+import { ensureContinuityThreads } from "./continuity.js";
+import { ensureTodayState } from "./today.js";
 
 const BUBBLE_GAP_MIN_MS = 500;
 const BUBBLE_GAP_MAX_MS = 2_400;
@@ -119,6 +121,8 @@ async function generateReply(gen: number): Promise<void> {
 }
 
 async function generateAndInsertReply(genAtStart: number): Promise<void> {
+  await ensureTodayState();
+  await ensureContinuityThreads();
   const history = recentMessages(config.recentTurns * 2);
   const messages: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt() },

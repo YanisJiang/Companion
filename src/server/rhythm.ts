@@ -1,6 +1,8 @@
 /** 回合节奏纯逻辑：单测覆盖这里，调度器只接线。 */
 
-export const MAX_BUBBLES = 5;
+export const MAX_BUBBLES = 3;
+/** 短于等于此字数的泡并入上一条，避免词碎片 */
+export const MIN_BUBBLE_CHARS = 2;
 /** 停发后安静多久再回（连发会重置） */
 export const QUIET_MIN_MS = 1_500;
 export const QUIET_MAX_MS = 3_000;
@@ -27,6 +29,24 @@ export function quietDelayMs(
   return pick(QUIET_MIN_MS, QUIET_MAX_MS);
 }
 
+/** 把过短片段并进上一条，再截到 MAX_BUBBLES。 */
+export function coalesceShortBubbles(
+  parts: string[],
+  minChars = MIN_BUBBLE_CHARS,
+): string[] {
+  const out: string[] = [];
+  for (const raw of parts) {
+    const p = raw.trim();
+    if (!p) continue;
+    if (out.length && [...p].length <= minChars) {
+      out[out.length - 1] = `${out[out.length - 1]}${p}`;
+      continue;
+    }
+    out.push(p);
+  }
+  return out.slice(0, MAX_BUBBLES);
+}
+
 export function splitBubbles(text: string): string[] {
   const raw = text.trim();
   if (!raw) return [];
@@ -39,10 +59,10 @@ export function splitBubbles(text: string): string[] {
       .split(/\n+/)
       .map((s) => s.trim())
       .filter(Boolean);
-    if (lines.length > 1) return lines.slice(0, MAX_BUBBLES);
+    if (lines.length > 1) return coalesceShortBubbles(lines);
     return [raw];
   }
-  return parts.slice(0, MAX_BUBBLES);
+  return coalesceShortBubbles(parts);
 }
 
 /**

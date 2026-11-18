@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { formatChatTime, shouldShowTime } from "./chatTime";
 
 type Message = {
   id: number;
@@ -15,6 +16,12 @@ type Me = {
   persona?: string;
   characterDossier?: string;
   proactiveEnabled?: boolean;
+  initiativeDailyCap?: number;
+  initiativeUsedToday?: number;
+  idleMinMinutes?: number;
+  idleMaxMinutes?: number;
+  todayState?: string;
+  continuityThreads?: string;
 };
 
 async function api<T>(
@@ -40,82 +47,6 @@ async function api<T>(
   return { ok: true, data: data as T };
 }
 
-const TIME_GAP_MS = 5 * 60 * 1000;
-const TZ = "Asia/Shanghai";
-
-/** SQLite datetime('now') 为 UTC 无时区；乐观更新可能是 ISO。 */
-function parseMessageTime(raw: string): Date {
-  const s = raw.trim();
-  if (!s) return new Date(NaN);
-  if (/[tT]/.test(s) || /[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) {
-    return new Date(s);
-  }
-  return new Date(`${s.replace(" ", "T")}Z`);
-}
-
-function shanghaiYmd(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
-function formatChatTime(raw: string, now = new Date()): string {
-  const d = parseMessageTime(raw);
-  if (Number.isNaN(d.getTime())) return "";
-
-  const hm = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: TZ,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
-
-  const day = shanghaiYmd(d);
-  const today = shanghaiYmd(now);
-  const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const yesterday = shanghaiYmd(yesterdayDate);
-
-  if (day === today) return hm;
-  if (day === yesterday) return `昨天 ${hm}`;
-
-  const year = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-  }).format(d);
-  const thisYear = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-  }).format(now);
-
-  if (year === thisYear) {
-    const md = new Intl.DateTimeFormat("zh-CN", {
-      timeZone: TZ,
-      month: "numeric",
-      day: "numeric",
-    }).format(d);
-    return `${md} ${hm}`;
-  }
-
-  const full = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-  }).format(d);
-  return `${full} ${hm}`;
-}
-
-function shouldShowTime(prev: Message | undefined, curr: Message): boolean {
-  if (!prev) return true;
-  const a = parseMessageTime(prev.created_at).getTime();
-  const b = parseMessageTime(curr.created_at).getTime();
-  if (Number.isNaN(a) || Number.isNaN(b)) return false;
-  return Math.abs(b - a) >= TIME_GAP_MS;
-}
-
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [password, setPassword] = useState("");
@@ -132,6 +63,12 @@ export function App() {
   const [persona, setPersona] = useState("");
   const [characterDossier, setCharacterDossier] = useState("");
   const [proactiveEnabled, setProactiveEnabled] = useState(true);
+  const [initiativeDailyCap, setInitiativeDailyCap] = useState(8);
+  const [initiativeUsedToday, setInitiativeUsedToday] = useState(0);
+  const [idleMinMinutes, setIdleMinMinutes] = useState(3);
+  const [idleMaxMinutes, setIdleMaxMinutes] = useState(12);
+  const [todayState, setTodayState] = useState("");
+  const [continuityThreads, setContinuityThreads] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastSendAt = useRef(0);
 
@@ -148,6 +85,28 @@ export function App() {
       setPersona(res.data.persona || "");
       setCharacterDossier(res.data.characterDossier || "");
       setProactiveEnabled(Boolean(res.data.proactiveEnabled));
+      setInitiativeDailyCap(
+        typeof res.data.initiativeDailyCap === "number"
+          ? res.data.initiativeDailyCap
+          : 8,
+      );
+      setInitiativeUsedToday(
+        typeof res.data.initiativeUsedToday === "number"
+          ? res.data.initiativeUsedToday
+          : 0,
+      );
+      setIdleMinMinutes(
+        typeof res.data.idleMinMinutes === "number"
+          ? res.data.idleMinMinutes
+          : 3,
+      );
+      setIdleMaxMinutes(
+        typeof res.data.idleMaxMinutes === "number"
+          ? res.data.idleMaxMinutes
+          : 12,
+      );
+      setTodayState(res.data.todayState || "");
+      setContinuityThreads(res.data.continuityThreads || "");
     }
   }
 
@@ -257,6 +216,9 @@ export function App() {
         persona,
         characterDossier,
         proactiveEnabled,
+        initiativeDailyCap,
+        idleMinMinutes,
+        idleMaxMinutes,
       }),
     });
     if (!res.ok) {
@@ -264,6 +226,58 @@ export function App() {
       return;
     }
     setNotice("设置已保存；建议清空对话后再聊，人设更干净");
+    await refreshMe();
+  }
+
+  async function regenerateToday() {
+    const res = await api<{ ok: boolean; todayState?: string }>("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ regenerateTodayState: true }),
+    });
+    if (!res.ok) {
+      setNotice(res.error);
+      return;
+    }
+    setTodayState(res.data.todayState || "");
+    setNotice("今日状态已重新生成");
+    await refreshMe();
+  }
+
+  async function refreshContinuity() {
+    const res = await api<{ ok: boolean; continuityThreads?: string }>(
+      "/api/settings",
+      {
+        method: "POST",
+        body: JSON.stringify({ refreshContinuityThreads: true }),
+      },
+    );
+    if (!res.ok) {
+      setNotice(res.error);
+      return;
+    }
+    setContinuityThreads(res.data.continuityThreads || "");
+    setNotice("未完线已刷新");
+    await refreshMe();
+  }
+
+  async function resetInitiativeUsed() {
+    const res = await api<{
+      ok: boolean;
+      initiativeUsedToday?: number;
+      initiativeDailyCap?: number;
+    }>("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ resetInitiativeUsedToday: true }),
+    });
+    if (!res.ok) {
+      setNotice(res.error);
+      return;
+    }
+    setInitiativeUsedToday(res.data.initiativeUsedToday ?? 0);
+    if (typeof res.data.initiativeDailyCap === "number") {
+      setInitiativeDailyCap(res.data.initiativeDailyCap);
+    }
+    setNotice("今日主动已用已清零");
     await refreshMe();
   }
 
@@ -372,11 +386,79 @@ export function App() {
               checked={proactiveEnabled}
               onChange={(e) => setProactiveEnabled(e.target.checked)}
             />
-            允许每天主动找我一次
+            允许主动找我（回后续话 / 安静后找你）
+          </label>
+          <label>
+            每日主动额度（续话+安静找你合计，0～50）
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={initiativeDailyCap}
+              onChange={(e) =>
+                setInitiativeDailyCap(Number(e.target.value) || 0)
+              }
+            />
+          </label>
+          <p className="notice" style={{ margin: 0 }}>
+            今日已用 {initiativeUsedToday} / {initiativeDailyCap}
+          </p>
+          <label>
+            安静后找你：最短（分钟，1～120）
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={idleMinMinutes}
+              onChange={(e) =>
+                setIdleMinMinutes(Number(e.target.value) || 1)
+              }
+            />
+          </label>
+          <label>
+            安静后找你：最长（分钟，1～120）
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={idleMaxMinutes}
+              onChange={(e) =>
+                setIdleMaxMinutes(Number(e.target.value) || 1)
+              }
+            />
+          </label>
+          <label>
+            今日状态（只读，聊天会偶尔引用）
+            <textarea
+              className="persona-input"
+              rows={3}
+              value={todayState || "（尚未生成，打开设置或聊一句后会出现）"}
+              readOnly
+            />
+          </label>
+          <label>
+            近期未完线（只读，可续上）
+            <textarea
+              className="persona-input"
+              rows={4}
+              value={
+                continuityThreads || "（聊一会儿后刷新，或等自动抽取）"
+              }
+              readOnly
+            />
           </label>
           <div className="settings-row">
             <button className="primary" type="button" onClick={() => void saveSettings()}>
               保存设置
+            </button>
+            <button className="ghost" type="button" onClick={() => void regenerateToday()}>
+              重新生成今日
+            </button>
+            <button className="ghost" type="button" onClick={() => void refreshContinuity()}>
+              刷新未完线
+            </button>
+            <button className="ghost" type="button" onClick={() => void resetInitiativeUsed()}>
+              清零今日已用
             </button>
             <button className="ghost" type="button" onClick={() => void clearMemory()}>
               清空记忆

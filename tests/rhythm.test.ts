@@ -5,10 +5,12 @@ import {
   PERSONA_SEED_VERSION,
 } from "../src/server/persona.ts";
 import {
+  MAX_BUBBLES,
   QUIET_MANY_MAX_MS,
   QUIET_MANY_MIN_MS,
   QUIET_MAX_MS,
   QUIET_MIN_MS,
+  coalesceShortBubbles,
   isNudge,
   quietDelayMs,
   shouldReplyImmediately,
@@ -89,10 +91,23 @@ describe("splitBubbles", () => {
     ]);
   });
 
-  it("最多保留 5 条", () => {
-    const text = [1, 2, 3, 4, 5, 6].map((n) => `泡${n}`).join("\n---\n");
-    assert.equal(splitBubbles(text).length, 5);
-    assert.equal(splitBubbles(text)[4], "泡5");
+  it("最多保留 3 条", () => {
+    assert.equal(MAX_BUBBLES, 3);
+    const text = [1, 2, 3, 4, 5, 6].map((n) => `泡${n}内容`).join("\n---\n");
+    const bubbles = splitBubbles(text);
+    assert.equal(bubbles.length, 3);
+    assert.equal(bubbles[2], "泡3内容");
+  });
+
+  it("过短词碎片并入上一条", () => {
+    assert.deepEqual(coalesceShortBubbles(["早啊", "…", "眼还糊着"]), [
+      "早啊…",
+      "眼还糊着",
+    ]);
+    assert.deepEqual(splitBubbles("早啊\n---\n嗯\n---\n眼还糊着"), [
+      "早啊嗯",
+      "眼还糊着",
+    ]);
   });
 
   it("空内容 → 空数组", () => {
@@ -100,11 +115,10 @@ describe("splitBubbles", () => {
   });
 });
 
-describe("persona delay-excuse ban", () => {
-  it("seed=8 且禁止用忙碌圆沉默", () => {
-    assert.equal(PERSONA_SEED_VERSION, "8");
+describe("persona less-split + delay ban", () => {
+  it("seed=9 且少拆、禁忙碌圆沉默", () => {
+    assert.equal(PERSONA_SEED_VERSION, "9");
+    assert.match(DEFAULT_PERSONA, /最多 3 条/);
     assert.match(DEFAULT_PERSONA, /套袜子/);
-    assert.match(DEFAULT_PERSONA, /禁止用/);
-    assert.match(DEFAULT_PERSONA, /不理/);
   });
 });

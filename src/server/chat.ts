@@ -11,6 +11,7 @@ import {
   resetReplyScheduler,
   scheduleReplyAfterUserMessage,
 } from "./reply-scheduler.js";
+import { ensureTodayState } from "./today.js";
 
 function detectPin(text: string): string | null {
   const m = text.trim().match(/^记住[:：]\s*(.+)$/s);
@@ -59,12 +60,13 @@ export async function handleUserMessage(raw: string): Promise<ChatResult> {
 }
 
 export async function generateProactiveMessage(): Promise<string> {
+  await ensureTodayState();
   const messages: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt() },
     {
       role: "user",
       content:
-        "（系统）今天用户还没来找你。请发一句很短的主动问候，像恋人私聊随口说一句，只要情绪或惦记，可带一点小档案里的生活细节，不要提问收尾，不要列表，不要讲道理。",
+        "（系统）今天用户还没来找你。请发一句很短的主动问候，像恋人私聊随口说一句，可轻轻带一点「你今天的状态」或小档案细节，不要提问收尾，不要列表，不要讲道理。",
     },
   ];
   return chatCompletion(messages);

@@ -23,7 +23,25 @@ import {
   setSetting,
 } from "./db.js";
 import { DEFAULT_DOSSIER, DEFAULT_PERSONA } from "./persona.js";
+import {
+  getIdleWindowMinutes,
+  getInitiativeDailyCap,
+  getInitiativeUsedToday,
+  resetInitiativeUsedToday,
+  setIdleWindowMinutes,
+  setInitiativeDailyCap,
+} from "./followup.js";
 import { startProactiveLoop } from "./proactive.js";
+import {
+  ensureContinuityThreads,
+  formatContinuity,
+  readStoredContinuity,
+} from "./continuity.js";
+import {
+  ensureTodayState,
+  formatTodayState,
+  readStoredTodayState,
+} from "./today.js";
 import {
   isReplyGenerating,
   noteTyping,
@@ -42,10 +60,14 @@ const app = new Hono();
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
-app.get("/api/me", (c) => {
+app.get("/api/me", async (c) => {
   const token = getCookie(c, config.cookieName);
   const ok = verifySessionToken(token);
   if (!ok) return c.json({ authenticated: false });
+  await ensureTodayState();
+  await ensureContinuityThreads();
+  const today = readStoredTodayState();
+  const continuity = readStoredContinuity();
   return c.json({
     authenticated: true,
     companionName: getSetting("companion_name") || config.companionName,
@@ -53,6 +75,12 @@ app.get("/api/me", (c) => {
     persona: currentPersona(),
     characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
+    initiativeDailyCap: getInitiativeDailyCap(),
+    initiativeUsedToday: getInitiativeUsedToday(),
+    idleMinMinutes: getIdleWindowMinutes().min,
+    idleMaxMinutes: getIdleWindowMinutes().max,
+    todayState: today ? formatTodayState(today) : "",
+    continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });
 
@@ -118,13 +146,23 @@ api.post("/messages/clear", (c) => {
   return c.json({ ok: true });
 });
 
-api.get("/settings", (c) => {
+api.get("/settings", async (c) => {
+  await ensureTodayState();
+  await ensureContinuityThreads();
+  const today = readStoredTodayState();
+  const continuity = readStoredContinuity();
   return c.json({
     companionName: getSetting("companion_name") || config.companionName,
     userNickname: getSetting("user_nickname") || config.userNickname,
     persona: currentPersona(),
     characterDossier: currentDossier(),
     proactiveEnabled: getSetting("proactive_enabled") === "1",
+    initiativeDailyCap: getInitiativeDailyCap(),
+    initiativeUsedToday: getInitiativeUsedToday(),
+    idleMinMinutes: getIdleWindowMinutes().min,
+    idleMaxMinutes: getIdleWindowMinutes().max,
+    todayState: today ? formatTodayState(today) : "",
+    continuityThreads: continuity ? formatContinuity(continuity) : "",
   });
 });
 
@@ -135,6 +173,12 @@ api.post("/settings", async (c) => {
     persona?: string;
     characterDossier?: string;
     proactiveEnabled?: boolean;
+    initiativeDailyCap?: number;
+    idleMinMinutes?: number;
+    idleMaxMinutes?: number;
+    resetInitiativeUsedToday?: boolean;
+    regenerateTodayState?: boolean;
+    refreshContinuityThreads?: boolean;
   } | null;
   if (!body) return c.json({ error: "无效请求" }, 400);
   if (typeof body.companionName === "string" && body.companionName.trim()) {
@@ -154,7 +198,48 @@ api.post("/settings", async (c) => {
   if (typeof body.proactiveEnabled === "boolean") {
     setSetting("proactive_enabled", body.proactiveEnabled ? "1" : "0");
   }
-  return c.json({ ok: true });
+  if (typeof body.initiativeDailyCap === "number") {
+    setInitiativeDailyCap(body.initiativeDailyCap);
+  }
+  if (
+    typeof body.idleMinMinutes === "number" ||
+    typeof body.idleMaxMinutes === "number"
+  ) {
+    const cur = getIdleWindowMinutes();
+    setIdleWindowMinutes(
+      typeof body.idleMinMinutes === "number"
+        ? body.idleMinMinutes
+        : cur.min,
+      typeof body.idleMaxMinutes === "number"
+        ? body.idleMaxMinutes
+        : cur.max,
+    );
+  }
+  if (body.resetInitiativeUsedToday === true) {
+    resetInitiativeUsedToday();
+  }
+  if (body.regenerateTodayState === true) {
+    await ensureTodayState(true);
+  } else {
+    await ensureTodayState();
+  }
+  if (body.refreshContinuityThreads === true) {
+    await ensureContinuityThreads(true);
+  } else {
+    await ensureContinuityThreads();
+  }
+  const today = readStoredTodayState();
+  const continuity = readStoredContinuity();
+  const idle = getIdleWindowMinutes();
+  return c.json({
+    ok: true,
+    initiativeDailyCap: getInitiativeDailyCap(),
+    initiativeUsedToday: getInitiativeUsedToday(),
+    idleMinMinutes: idle.min,
+    idleMaxMinutes: idle.max,
+    todayState: today ? formatTodayState(today) : "",
+    continuityThreads: continuity ? formatContinuity(continuity) : "",
+  });
 });
 
 app.route("/api", api);

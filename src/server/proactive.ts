@@ -8,6 +8,8 @@ import {
   setSetting,
 } from "./db.js";
 import { shanghaiYmd, tickIdlePing } from "./followup.js";
+import { ensureContinuityThreads } from "./continuity.js";
+import { ensureTodayState } from "./today.js";
 
 function localHour(d = new Date()): number {
   const hour = new Intl.DateTimeFormat("en-US", {
@@ -53,6 +55,8 @@ async function tickDailyGreeting() {
 }
 
 export async function tickProactive() {
+  await ensureTodayState();
+  await ensureContinuityThreads();
   await tickIdlePing();
   await tickDailyGreeting();
 }
