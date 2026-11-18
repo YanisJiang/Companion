@@ -1,7 +1,6 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { bindCrisisStore } from "@companion/core";
 import { config } from "./config.js";
 
 mkdirSync(config.dataDir, { recursive: true });
@@ -76,11 +75,6 @@ export function setSetting(key: string, value: string) {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).run(key, value);
 }
-
-bindCrisisStore({
-  get: (key) => getSetting(key),
-  set: (key, value) => setSetting(key, value),
-});
 
 export function listMessages(limit = 200): MessageRow[] {
   return db

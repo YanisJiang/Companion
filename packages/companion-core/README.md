@@ -1,37 +1,42 @@
 # @companion/core
 
-陪伴决策内核：性格 / 快变量 / decide / 节奏 / 危机 / 角色配置。
+陪伴决策内核：性格 / 快变量 / decide / 节奏 / 危机 / 角色配置 / 编排（收发、idle、主动）。
 
-## 两个插口
+## 插口
 
 1. **LLM** — `createOpenAiCompatibleLlm({ apiKey, baseUrl, model })` 或自实现 `LlmClient`
-2. **配置** — 目录含 `persona.txt` / `dossier.txt` / `fewshots.txt` / `params.json`  
-   示例：`examples/character/`（与本仓库根目录 `config/character` 同结构）
+2. **MessageStore** — 消息 + 记忆 + settings（含 `KvStore`）；可用 `createMemoryMessageStore()` 或 SQLite 适配
+3. **配置目录** — `persona.txt` / `dossier.txt` / `fewshots.txt` / `params.json`  
+   示例：`examples/character/`
 
-另需宿主提供 **KvStore**（冷静窗等）：`bindCrisisStore(store)`。
-
-## 使用
+## 使用（P1）
 
 ```ts
 import {
+  createCompanion,
   createOpenAiCompatibleLlm,
-  setCharacterConfigDir,
-  bindCrisisStore,
-  createMemoryKv,
-  decideInitiative,
-  loadCharacterConfig,
+  createMemoryMessageStore,
 } from "@companion/core";
 
-setCharacterConfigDir("./config/character"); // 或 examples/character
-bindCrisisStore(createMemoryKv()); // 生产可换成 SQLite settings
-
+const store = createMemoryMessageStore();
 const llm = createOpenAiCompatibleLlm({
   apiKey: process.env.API_KEY!,
   baseUrl: "https://api.deepseek.com",
   model: "deepseek-chat",
 });
 
-const cfg = loadCharacterConfig(true);
+const app = createCompanion({
+  llm,
+  store,
+  configDir: "./config/character",
+  onProactiveMessage: (text) => {
+    // 可选：宿主推送
+    console.log("proactive", text);
+  },
+});
+
+await app.handleUserMessage("在吗");
+app.startProactiveLoop();
 ```
 
-P0 仅导出纯逻辑与端口；完整 `handleUserMessage` / 自行启动见后续版本。
+`createCompanion` 会绑定冷静窗 KV、加载角色配置，并返回 `handleUserMessage` / `startProactiveLoop` 等应用面 API。
