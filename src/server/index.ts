@@ -12,6 +12,7 @@ import {
   setSessionCookie,
   verifySessionToken,
 } from "./auth.js";
+import "./bootstrap.js";
 import { handleUserMessage } from "./chat.js";
 import { config } from "./config.js";
 import {

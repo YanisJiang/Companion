@@ -9,6 +9,7 @@ const llm = createOpenAiCompatibleLlm({
   model: config.deepseekModel,
 });
 
+/** 保留给脚本/调试；主路径走 createCompanion 注入的 LlmClient */
 export async function chatCompletion(
   messages: ChatMessage[],
   opts?: { temperature?: number; maxTokens?: number },
